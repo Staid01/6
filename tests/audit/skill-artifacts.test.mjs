@@ -125,9 +125,13 @@ test("R58 manifest.json must not point the host at Python installers that are no
   const s = site();
   assert.equal(s.create().status, 0);
   const manifest = readJson(join(s.personDir, "manifest.json"));
-  const installers = Object.values(manifest.install?.installers ?? {});
-  const missing = installers.filter((path) => !existsSync(join(repoRoot, path)));
-  // Observed on dot-skill-test: tools/install_claude_generated_skill.py, tools/install_openclaw_generated_skill.py,
-  // tools/install_codex_generated_skill.py — the Python tree was deleted (MIGRATION.md 规则 3).
-  assert.deepEqual(missing, [], `manifest.install.installers reference files that do not exist: ${missing.join(", ")}`);
+  assert.equal(JSON.stringify(manifest).includes(".py"), false);
+  const installers = manifest.install?.installers;
+  assert.ok(Array.isArray(installers) && installers.length > 0);
+  for (const item of installers) {
+    const command = item?.command;
+    const pathExists = typeof item === "string" && existsSync(join(repoRoot, item));
+    const isNodeInstall = command === `node bin/distilly.mjs install ${item.host}`;
+    assert.equal(pathExists || isNodeInstall, true, JSON.stringify(item));
+  }
 });
