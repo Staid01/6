@@ -15,6 +15,22 @@
 
 三种角色都必须是**模型或人**，不是本脚本。同一模型不得同时充当蒸馏器与裁判。
 
+蒸馏者、裁判、核对者必须是三个不同模型，且都不是 deepseek-flash。本程序固定：
+
+| 角色 | 模型 | 看到什么 |
+|---|---|---|
+| 蒸馏者 | 不得是下面两行，也不得是 deepseek-flash | A 半段（实验组读 `deriver-input.md`） |
+| 裁判 | `claude-sonnet-5-thinking-medium` | 只看 `profile.html` 与 `judge-prompt.md` |
+| 核对者 | `gpt-5.6-sol-medium` | 只读 `split/B.srt` 与裁判的 10 条 |
+
+效果数字不是代码。第一组数字由后续 swarm 按上表产出，写到：
+
+`/cursor/stores/bc-0e6a1836-4b6d-4ce2-8177-5061476fde52/media/distilly-atomic-pr/pr-8-blind/`
+
+本拍不跑三模型盲测 Lane 7 与 Lane 8。机械层（切分、相对路径 prepare、finalize、control、空表 score）由本 PR 自证。
+
+`--out`、`--a`、`--view`、`--scores` 可以是相对路径。脚本对 `process.cwd()` 做一次 `path.resolve`，传给 `harvest` / `retrospect` / `view` 的 `--base-dir` 与文件路径都是绝对路径。HANDOFF §8 的 `prepare --a split/A.srt --out run` 必须退出 0。
+
 ## 1. 切分（检查者一个人做）
 
 ```bash
@@ -110,4 +126,5 @@ node scripts/blind-test.mjs score --scores /tmp/blind-run/scores.json --out /tmp
   报告里必须写明这一点。
 - 身份盲：`prepare --person <slug>` 决定页面上的 `slug`；要让裁判连人名也看不到，
   用一个中性 slug（如 `blind-sample-01`）跑，目录名与页面都不含真名。
-- 裁判与蒸馏器若用同一模型，须在结论里注明；同模型自评会让命中率偏高。
+- 裁判、核对者、蒸馏者必须是三个不同模型，都不是 deepseek-flash。裁判固定
+  `claude-sonnet-5-thinking-medium`，核对者固定 `gpt-5.6-sol-medium`。同模型自评不作数。
