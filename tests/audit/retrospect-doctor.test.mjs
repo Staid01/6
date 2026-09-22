@@ -141,6 +141,36 @@ test("R24 Step 1.5: `doctor --require-shape` run after Collect and before Derive
   assert.equal(after.body.verdict, "FAIL");
 });
 
+test("R24 after retrospect, `doctor --require-shape` fails the C-SPAN floor corpus with exit 1 and the documented reason; without the flag it only reports", () => {
+  // CI's acceptance job runs synthetic-interview and synthetic-multisource only
+  // (.github/workflows/ci.yml lines 76-82), so the FAIL path STATUS §5 describes is
+  // never exercised by "CI green". This pins it on the corpus the docs name.
+  const ws = workspace();
+  harvest(ws, fixtures.houseDir, "us-house");
+  retrospect(ws, "us-house");
+
+  const reported = doctor(ws);
+  assert.equal(reported.run.status, 0, "reporting a bad shape without --require-shape is not itself a failure");
+  const soft = reported.body.shape.find((item) => item.slug === "colleague/us-house");
+  assert.equal(soft.verdict, "FAIL");
+  assert.equal(reported.body.ok, true);
+  assert.equal(reported.body.verdict, "PASS");
+
+  const gated = doctor(ws, ["--require-shape"]);
+  assert.equal(gated.run.status, 1);
+  assert.equal(gated.body.ok, false);
+  assert.equal(gated.body.verdict, "FAIL");
+  const shape = gated.body.shape.find((item) => item.slug === "colleague/us-house");
+  assert.equal(shape.units, 2744);
+  assert.equal(shape.sources, 2);
+  assert.equal(shape.speakers, 18);
+  assert.equal(shape.top_speaker, "THE SPEAKER PRO TEMPORE");
+  assert.deepEqual(shape.reasons, [
+    "这是多人材料，但只有 3% 的单元能归到某个说话人（阈值 40%）：先补这个人自己的一手产出（本人访谈/演讲字幕、本人文章），不要从会议流水里切人",
+  ]);
+  assert.match(gated.run.stderr, /Verdict \/ 判定：FAIL —— 语料形状撑不起一个人/);
+});
+
 test("R24 the interview corpus passes the shape gate with two speakers and 林工 on top", () => {
   const ws = workspace();
   harvest(ws, fixtures.interviewDir, "lin-gong");
