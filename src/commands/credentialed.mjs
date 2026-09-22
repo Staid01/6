@@ -22,6 +22,7 @@ const CHANNELS = {
 /** Channels omitted here do not accept `--mode`. */
 const CHANNEL_MODES = {
   feishu: ["api", "browser", "mcp"],
+  dingtalk: ["api", "browser"],
   x: ["api", "browser"],
 };
 
