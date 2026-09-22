@@ -1,0 +1,6 @@
+{
+  "id": "entry-surface",
+  "group": "unit",
+  "command": "node scripts/check-entry-surface.mjs --baseline tests/gates/baseline/entry-surface.txt ${CLAIMS_FILE:+--claims \"$CLAIMS_FILE\"}",
+  "pass": { "exit": 0, "stdout_regex": ["^RESULT PASS"] }
+}

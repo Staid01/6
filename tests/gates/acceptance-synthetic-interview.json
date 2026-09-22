@@ -1,0 +1,13 @@
+{
+  "id": "acceptance-synthetic-interview",
+  "group": "acceptance",
+  "requires": ["playwright"],
+  "command": "node scripts/acceptance.mjs --corpus tests/fixtures/public-corpus/synthetic-interview --person lin-gong --evidence \"${RUNNER_TEMP:-/tmp}/evidence-synthetic-interview\"",
+  "pass": {
+    "ratchet": {
+      "parser": "acceptance",
+      "baseline": "tests/gates/baseline/acceptance-synthetic-interview.txt",
+      "final": { "exit": 0, "stdout_contains": ["验收结果：18/18 通过"] }
+    }
+  }
+}

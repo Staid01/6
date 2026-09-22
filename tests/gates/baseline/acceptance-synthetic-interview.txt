@@ -1,0 +1,1 @@
+# Expected failures for gate acceptance-synthetic-interview. Delete a line when its PR turns the case green. Never add one without a PR that explains it.

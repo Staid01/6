@@ -1,0 +1,13 @@
+{
+  "id": "acceptance-multisource",
+  "group": "acceptance",
+  "requires": ["playwright"],
+  "command": "node scripts/acceptance.mjs --corpus tests/fixtures/public-corpus/synthetic-multisource --person lin-gong --evidence \"${RUNNER_TEMP:-/tmp}/evidence-multisource\"",
+  "pass": {
+    "ratchet": {
+      "parser": "acceptance",
+      "baseline": "tests/gates/baseline/acceptance-multisource.txt",
+      "final": { "exit": 0, "stdout_contains": ["验收结果：18/18 通过"] }
+    }
+  }
+}

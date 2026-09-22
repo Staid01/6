@@ -1,0 +1,6 @@
+{
+  "id": "release-check",
+  "group": "unit",
+  "command": "node scripts/check_release.mjs",
+  "pass": { "exit": 0, "stdout_regex": ["^7/7 项通过"] }
+}

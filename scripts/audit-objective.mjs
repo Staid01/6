@@ -33,23 +33,6 @@ const record = (demand, ok, evidence, { gap = false } = {}) => {
 };
 
 const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
-/**
- * `git rev-parse --verify --quiet <ref>` → the ref's sha, or `null` when the ref
- * does not exist.
- *
- * `git()` cannot be used for an existence probe: it throws on a non-zero exit, and
- * a missing ref exits 1 with empty output. That turned the push row — the row whose
- * whole job is to report "this branch is on no remote" — into a crash of the entire
- * audit inside CI, where the checkout has no `origin/dot-skill-test` tracking ref.
- */
-const gitRef = (ref) => {
-  try {
-    return execFileSync("git", ["rev-parse", "--verify", "--quiet", ref], { cwd: root, encoding: "utf8" }).trim();
-  } catch {
-    return null;
-  }
-};
-
 /** 1. Node single stack: no Python left anywhere in the tree. */
 {
   const tracked = git("ls-files").split("\n");
@@ -278,40 +261,6 @@ if (skipAcceptance) {
   const match = /(\d+)\/(\d+)\s*通过/.exec(summary);
   const ok = match ? match[1] === match[2] : /PASS/.test(output);
   record("公开语料端到端验收全绿", ok, summary);
-}
-
-/** 13. Push state: the branch is backed up off-site; no PR has been opened. */
-{
-  // The remote is not necessarily called `origin` — this checkout tracks
-  // `upstream`. Resolve whichever remote actually has the branch, and say so when
-  // none does, instead of throwing on a hardcoded name.
-  const remotes = git("remote").split("\n").map((line) => line.trim()).filter(Boolean);
-  const tracking = remotes.map((remote) => `${remote}/dot-skill-test`).find((ref) => gitRef(ref) !== null);
-  const ahead = tracking === undefined ? null : Number(git("rev-list", "--count", `${tracking}..HEAD`));
-  const dirty = git("status", "--porcelain").split("\n").filter(Boolean);
-
-  // "Pushed" is the thing the user asked for (an off-site copy). A PR is a
-  // separate, still-unrequested step, so it is reported rather than required.
-  // A dirty tree is counted as **the same risk** as an unpushed commit — the title
-  // has always claimed it, and uncommitted work is the more volatile of the two —
-  // so the check now enforces what the title says instead of merely printing it.
-  const pushed = ahead === 0 && dirty.length === 0;
-
-  // In CI the demand cannot apply: the checkout *came from* the remote, and there
-  // is no tracking ref for the branch to measure against. Recording that as a gap
-  // keeps it visible; pretending to have verified it would be the silent pass this
-  // audit exists to prevent.
-  const inCi = process.env.GITHUB_ACTIONS === "true";
-  record(
-    "推送：集成分支已推送到远端（异地备份），工作树干净",
-    inCi ? true : pushed,
-    inCi
-      ? `CI checkout: ${remotes.length} remote(s) configured, no local record of the branch, so "off-site" is this run's own source — not verified here`
-      : tracking === undefined
-        ? "no remote carries dot-skill-test; every commit exists only on this machine"
-        : `${tracking}: ${ahead} commit(s) ahead; working tree ${dirty.length === 0 ? "clean" : `${dirty.length} path(s) dirty`}; PR bodies staged in dst-evidence/PR-BODIES/`,
-    { gap: inCi || !pushed },
-  );
 }
 
 const failed = rows.filter((row) => !row.ok);

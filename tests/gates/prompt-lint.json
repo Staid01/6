@@ -1,0 +1,6 @@
+{
+  "id": "prompt-lint",
+  "group": "unit",
+  "command": "node scripts/prompt-lint.mjs",
+  "pass": { "exit": 0, "stdout_regex": ["^prompt-lint: 0 finding\\(s\\)"] }
+}
