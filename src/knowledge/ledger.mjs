@@ -156,12 +156,29 @@ export function saveLedger(store, ledger) {
   return { path: store.ledgerPath, bytes: Buffer.byteLength(text, "utf8"), sha256: sha256Hex(Buffer.from(text, "utf8")) };
 }
 
-/** Highest allocated numeric suffix, so ids never go backwards. */
+/**
+ * Highest allocated paragraph suffix, so ids never go backwards.
+ * Paragraph anchors consume ids too. Scanning only `entry.id` lets the next
+ * entry reuse `k0002` while the previous entry still owns that paragraph.
+ */
+function paragraphIndex(value) {
+  const token = typeof value === "string" ? value : value?.anchor ?? value?.id;
+  const parsed = parseAnchor(token);
+  if (!parsed || parsed.kind !== "para") return 0;
+  return parsed.index;
+}
+
 export function lastId(ledger) {
   let highest = 0;
+  const consider = (value) => {
+    const index = paragraphIndex(value);
+    if (index > highest) highest = index;
+  };
   for (const entry of ledger) {
-    const parsed = parseAnchor(entry?.id);
-    if (parsed && parsed.index > highest) highest = parsed.index;
+    consider(entry?.id);
+    for (const unit of entry?.units ?? []) consider(unit?.anchor ?? unit?.id);
+    for (const anchor of entry?.anchors ?? []) consider(anchor);
+    for (const detail of entry?.anchor_detail ?? []) consider(detail?.anchor ?? detail?.id);
   }
   return highest;
 }
@@ -404,14 +421,36 @@ export function buildEntry(document, options = {}) {
 }
 
 /**
- * Two origins are the same when both sides name one and the names match. An
- * entry without an origin can never be called a duplicate: "I do not know where
- * this came from" is not the same claim as "I know, and it is the same place".
+ * Reduce an origin to `raw/<source>/<file>`. The ledger stores that form, but a
+ * document still carries the path it was read from.
+ */
+function canonicalOrigin(value, source) {
+  if (typeof value !== "string" || value === "") return "";
+  const norm = value.split(sep).join("/");
+  const marker = "raw/";
+  let idx = norm.lastIndexOf(marker);
+  while (idx !== -1) {
+    if ((idx === 0 || norm[idx - 1] === "/") && /^raw\/[^/]+\/.+/.test(norm.slice(idx))) {
+      return norm.slice(idx);
+    }
+    idx = idx === 0 ? -1 : norm.lastIndexOf(marker, idx - 1);
+  }
+  if (typeof source === "string" && source !== "") {
+    const base = norm.split("/").filter(Boolean).pop();
+    if (base) return `raw/${source}/${base}`;
+  }
+  return norm;
+}
+
+/**
+ * Two origins are the same when both sides name one and the names match.
+ * An entry without an origin can never be called a duplicate.
  */
 function sameOrigin(a, b) {
-  if (typeof a !== "string" || typeof b !== "string") return false;
-  if (a === "" || b === "") return false;
-  return a === b;
+  const left = canonicalOrigin(a);
+  const right = canonicalOrigin(b);
+  if (left === "" || right === "") return false;
+  return left === right;
 }
 
 /**
@@ -500,6 +539,32 @@ export function recordDocument(store, ledger, document, options = {}) {
     });
   }
 
+  // Same bytes under the same stored origin are already in the ledger.
+  // Stop before anchoring, or a repeat harvest would renumber the text file
+  // and, when origins were compared as disk path vs `raw/...`, stem a second one.
+  const incomingOrigin = storedFiles[0]?.relativePath ?? null;
+  const incomingSha = storedFiles[0]?.sha256 ?? null;
+  if (incomingSha && incomingOrigin && !options.allowDuplicate) {
+    const existing = ledger.find(
+      (candidate) => candidate.sha256 === incomingSha && sameOrigin(candidate.origin, incomingOrigin),
+    );
+    if (existing) {
+      return {
+        entry: existing,
+        appended: false,
+        duplicateOf: existing,
+        reason: `identical bytes already recorded as ${existing.id} (sha256 ${existing.sha256})`,
+        id: existing.id,
+        requestedId: existing.id,
+        written: { text: null, files: storedFiles },
+        units: existing.units ?? [],
+        anchors: existing.anchors ?? [],
+        conservation: [],
+        text: "",
+      };
+    }
+  }
+
   // Anchor the assembled content, continuing the numbering when a single
   // document needs more paragraphs than one id can own (see `chunkDocuments`).
   const id = options.id ?? nextId(ledger);
@@ -578,9 +643,11 @@ export function recordDocument(store, ledger, document, options = {}) {
   if (!textStem) {
     const target = store.textPath(source, null);
     const relative = target.slice(store.knowledgeRoot.length + 1).split(sep).join("/");
-    const claimedByOther = ledger.some(
-      (entry) => entry?.locations?.text === relative && entry?.origin !== document.origin,
-    );
+    const incomingOrigin = canonicalOrigin(storedFiles[0]?.relativePath ?? document.origin, source);
+    const claimedByOther = ledger.some((entry) => {
+      if (entry?.locations?.text !== relative) return false;
+      return canonicalOrigin(entry?.origin, source) !== incomingOrigin;
+    });
     if (claimedByOther) {
       const rawName = storedFiles[0]?.name ?? null;
       if (rawName) textStem = rawName.replace(/\.[^.]+$/, "");

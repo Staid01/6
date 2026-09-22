@@ -3,7 +3,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -279,6 +279,78 @@ test("ledgerStats summarises kinds, methods and anchors", () => {
   assert.equal(stats.byMethod["user-export"], 1);
   assert.equal(stats.credentialed, 0);
   assert.ok(stats.anchors >= 3);
+});
+
+test("nextId is one past every paragraph anchor, and the next entry starts there", () => {
+  const store = makeStore();
+  const ledger = loadLedger(store);
+  const records = [
+    { text: "alpha", kind: "turn" },
+    { text: "beta", kind: "turn" },
+  ];
+  const first = recordDocument(
+    store,
+    ledger,
+    chatDocument("alpha\n\nbeta\n", { records }),
+    { fetched_at: FIXED_TIME },
+  );
+  assert.equal(first.entry.id, "k0001");
+  assert.deepEqual(
+    first.entry.anchors.filter((anchor) => !anchor.includes(":")),
+    ["k0001", "k0002"],
+  );
+  assert.equal(lastId(ledger), 2);
+  assert.equal(nextId(ledger), "k0003");
+
+  const second = recordDocument(
+    store,
+    ledger,
+    chatDocument("gamma\n", { path: "/tmp/second.json" }),
+    { fetched_at: FIXED_TIME },
+  );
+  assert.equal(second.entry.id, "k0003");
+  assert.deepEqual(
+    second.entry.anchors.filter((anchor) => !anchor.includes(":")),
+    ["k0003"],
+  );
+  const taken = new Set(first.entry.anchors);
+  assert.deepEqual(
+    second.entry.anchors.filter((anchor) => taken.has(anchor)),
+    [],
+  );
+  assert.equal(ledger.length, 2);
+});
+
+test("a second record of the same bytes keeps the text path and does not stem another file", () => {
+  const store = makeStore();
+  const ledger = loadLedger(store);
+  const document = chatDocument("hello\n", { path: "/tmp/transcript.srt", source: "subtitle" });
+  const first = recordDocument(store, ledger, document, { fetched_at: FIXED_TIME });
+  const textPath = join(store.knowledgeRoot, first.entry.locations.text);
+  const before = readFileSync(textPath);
+  assert.deepEqual(readdirSync(store.textRoot).sort(), ["subtitle.md"]);
+
+  const second = recordDocument(store, ledger, document, { fetched_at: FIXED_TIME });
+  assert.equal(second.appended, false);
+  assert.equal(second.id, "k0001");
+  assert.equal(
+    second.reason,
+    `identical bytes already recorded as k0001 (sha256 ${first.entry.sha256})`,
+  );
+  assert.deepEqual(readdirSync(store.textRoot).sort(), ["subtitle.md"]);
+  assert.ok(readFileSync(textPath).equals(before));
+  assert.equal(ledger.length, 1);
+
+  const updated = recordDocument(
+    store,
+    ledger,
+    chatDocument("hello there\n", { path: "/tmp/transcript.srt", source: "subtitle" }),
+    { fetched_at: FIXED_TIME },
+  );
+  assert.equal(updated.appended, true);
+  assert.equal(updated.entry.id, "k0002");
+  assert.deepEqual(readdirSync(store.textRoot).sort(), ["subtitle.md"]);
+  assert.equal(updated.entry.locations.text, "text/subtitle.md");
 });
 
 test("the text file carries the paragraph anchors and the ledger points at it", () => {
