@@ -99,6 +99,27 @@ test("R08 `collect feishu --mode mcp` (SKILL.md 迁移对照表: feishu_mcp_clie
   assert.equal(body.mode, "mcp", `receipt.mode=${body.mode}; errors=${JSON.stringify(body.errors)}`);
 });
 
+test("R08 a contract channel that is not shipped is reported as planned (PR #185 正文: collect/planned-channel), never as an unknown channel", () => {
+  // PR #185's own "已知缺口" says the four unshipped channels answer `collect/planned-channel`
+  // and that `doctor` lists what is not in this build. Observed on dot-skill-test:
+  // `collect/unknown-channel` with remedy "known channels: feishu, slack, dingtalk, x", and doctor's `unavailable` is [].
+  const ws = workspace();
+  const codes = {};
+  for (const channel of ["discord", "reddit", "notion", "gmail"]) {
+    const body = receipt(distilly(["collect", channel, "--person", "p", "--json"], { cwd: ws.root, env: env(ws) }));
+    codes[channel] = body.error?.code ?? null;
+  }
+  const accepted = new Set([null, "collect/planned-channel"]);
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(codes).filter(([, code]) => !accepted.has(code))),
+    {},
+    `unshipped channels must answer collect/planned-channel; observed ${JSON.stringify(codes)}`,
+  );
+  const doctor = receipt(distilly(["doctor", "--base-dir", ws.root, "--json"], { cwd: ws.root, env: env(ws) }));
+  const listed = doctor.unavailable.map((item) => item.channel).sort();
+  assert.deepEqual(listed.filter((channel) => /^collect (discord|reddit|notion|gmail)$|^(discord|reddit|notion|gmail)$/.test(channel)).length, 4, `doctor.unavailable=${JSON.stringify(doctor.unavailable)}`);
+});
+
 test("R05 `transcribe` with no backend reports unavailable with the config file name and exits 1", () => {
   const ws = workspace();
   const run = distilly(["transcribe", fixtures.interviewSrt, "--json"], { cwd: ws.root, env: env(ws) });
