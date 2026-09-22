@@ -10,10 +10,22 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { distilly, fixtures, receipt, sha256, workspace } from "./helpers.mjs";
+import { distilly, fixtures, receipt, repoRoot, sha256, workspace } from "./helpers.mjs";
+
+function contractChannels() {
+  const text = readFileSync(join(repoRoot, "docs", "v2", "CONTRACT.md"), "utf8");
+  const lines = text.split("\n");
+  const heading = lines.findIndex((line) => /^##\s+1\./.test(line));
+  const open = lines.findIndex((line, index) => index > heading && line.startsWith("```"));
+  const close = lines.findIndex((line, index) => index > open && line.startsWith("```"));
+  const block = lines.slice(open + 1, close).join("\n");
+  const match = block.match(/^collect <([^>\n]+)>/m);
+  if (!match) throw new Error("CONTRACT §1 has no collect <channel> group");
+  return match[1].split("|").map((channel) => channel.trim());
+}
 
 const env = (ws) => ({ HOME: ws.home, DISTILLY_HOME: ws.distillyHome });
 
@@ -85,39 +97,65 @@ test("R08 `collect feishu --mode browser` (SKILL.md 迁移对照表) reaches the
   const ws = workspace();
   const run = distilly(["collect", "feishu", "--mode", "browser", "--person", "p", "--json"], { cwd: ws.root, env: env(ws) });
   const body = receipt(run);
-  // Expected: the same consent gate as `collect x --mode browser` (exit 2, mode browser).
-  // Observed on dot-skill-test: mode "api", exit 1, "collect feishu needs --chat-id" — the flag is ignored.
-  assert.equal(body.mode, "browser", `receipt.mode=${body.mode}; errors=${JSON.stringify(body.errors)}`);
   assert.equal(run.status, 2);
+  assert.equal(body.mode, "browser");
   assert.equal(body.status, "waiting-for-user-consent");
+  assert.equal(body.unavailable[0].remediation[0], "run: distilly consent grant --scope collect:feishu:browser");
 });
 
 test("R08 `collect feishu --mode mcp` (SKILL.md 迁移对照表: feishu_mcp_client.py → collect feishu) reaches the MCP route", () => {
   const ws = workspace();
   const run = distilly(["collect", "feishu", "--mode", "mcp", "--person", "p", "--json"], { cwd: ws.root, env: env(ws) });
   const body = receipt(run);
-  assert.equal(body.mode, "mcp", `receipt.mode=${body.mode}; errors=${JSON.stringify(body.errors)}`);
+  assert.equal(body.mode, "mcp");
+  assert.equal(JSON.stringify(body).includes("--chat-id"), false);
+  assert.match(JSON.stringify(body), /feishu_config\.json/);
 });
 
-test("R08 a contract channel that is not shipped is reported as planned (PR #185 正文: collect/planned-channel), never as an unknown channel", () => {
-  // PR #185's own "已知缺口" says the four unshipped channels answer `collect/planned-channel`
-  // and that `doctor` lists what is not in this build. Observed on dot-skill-test:
-  // `collect/unknown-channel` with remedy "known channels: feishu, slack, dingtalk, x", and doctor's `unavailable` is [].
+test("R08 a channel outside CONTRACT §1 returns collect/unknown-channel and the remedy lists the contract channels", () => {
   const ws = workspace();
-  const codes = {};
+  const channels = contractChannels();
+  const expectedRemedy = `known channels: ${channels.join(", ")}`;
   for (const channel of ["discord", "reddit", "notion", "gmail"]) {
-    const body = receipt(distilly(["collect", channel, "--person", "p", "--json"], { cwd: ws.root, env: env(ws) }));
-    codes[channel] = body.error?.code ?? null;
+    const run = distilly(["collect", channel, "--person", "p", "--json"], { cwd: ws.root, env: env(ws) });
+    assert.equal(run.status, 2);
+    const body = receipt(run);
+    assert.equal(body.error.code, "collect/unknown-channel");
+    assert.equal(body.error.remedy, expectedRemedy);
   }
-  const accepted = new Set([null, "collect/planned-channel"]);
-  assert.deepEqual(
-    Object.fromEntries(Object.entries(codes).filter(([, code]) => !accepted.has(code))),
-    {},
-    `unshipped channels must answer collect/planned-channel; observed ${JSON.stringify(codes)}`,
-  );
-  const doctor = receipt(distilly(["doctor", "--base-dir", ws.root, "--json"], { cwd: ws.root, env: env(ws) }));
-  const listed = doctor.unavailable.map((item) => item.channel).sort();
-  assert.deepEqual(listed.filter((channel) => /^collect (discord|reddit|notion|gmail)$|^(discord|reddit|notion|gmail)$/.test(channel)).length, 4, `doctor.unavailable=${JSON.stringify(doctor.unavailable)}`);
+});
+
+test("bin/distilly.mjs collect feishu --mode browser reaches the consent gate and --mode mcp reaches the MCP credential file", () => {
+  const ws = workspace();
+  const browser = distilly(["collect", "feishu", "--mode", "browser", "--json"], { cwd: ws.root, env: env(ws) });
+  assert.equal(browser.status, 2);
+  const browserBody = receipt(browser);
+  assert.equal(browserBody.mode, "browser");
+  assert.equal(browserBody.status, "waiting-for-user-consent");
+  assert.equal(browserBody.unavailable[0].remediation[0], "run: distilly consent grant --scope collect:feishu:browser");
+
+  const mcp = distilly(["collect", "feishu", "--mode", "mcp", "--json"], { cwd: ws.root, env: env(ws) });
+  const mcpBody = receipt(mcp);
+  assert.equal(mcpBody.mode, "mcp");
+  assert.equal(JSON.stringify(mcpBody).includes("--chat-id"), false);
+  assert.match(JSON.stringify(mcpBody), /feishu_config\.json/);
+});
+
+test("collect feishu --mode bogus and collect slack --mode browser exit 2 with collect/usage", () => {
+  const ws = workspace();
+  const bogus = distilly(["collect", "feishu", "--mode", "bogus", "--json"], { cwd: ws.root, env: env(ws) });
+  assert.equal(bogus.status, 2);
+  const bogusBody = receipt(bogus);
+  assert.equal(bogusBody.mode, "bogus");
+  assert.equal(bogusBody.error.code, "collect/usage");
+  assert.equal(bogusBody.error.remedy, "legal --mode values: api, browser, mcp");
+
+  const slack = distilly(["collect", "slack", "--mode", "browser", "--json"], { cwd: ws.root, env: env(ws) });
+  assert.equal(slack.status, 2);
+  const slackBody = receipt(slack);
+  assert.equal(slackBody.mode, "browser");
+  assert.equal(slackBody.error.code, "collect/usage");
+  assert.equal(slackBody.error.remedy, "legal --mode values: none");
 });
 
 test("R05 `transcribe` with no backend reports unavailable with the config file name and exits 1", () => {

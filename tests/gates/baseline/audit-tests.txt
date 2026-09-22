@@ -1,14 +1,5 @@
 # Expected failures for gate audit-tests. Delete a line when its PR turns the case green. Never add one without a PR that explains it.
-R08 `collect --help` names every channel CONTRACT §1 promises
-R08 `collect discord --json` is a known channel (CONTRACT §1 line 25), so its failure is about credentials, not about the channel name
-R08 `collect reddit --json` is a known channel (CONTRACT §1 line 25), so its failure is about credentials, not about the channel name
-R08 `collect notion --json` is a known channel (CONTRACT §1 line 25), so its failure is about credentials, not about the channel name
-R08 `collect gmail --json` is a known channel (CONTRACT §1 line 25), so its failure is about credentials, not about the channel name
-R08 every collection module under src/collect/ is reachable from bin/distilly.mjs (module present ≠ command wired)
 R23 `parse-doc` advertises pdf alongside docx and xlsx (CONTRACT §1 line 22)
-R08 `collect feishu --mode browser` (SKILL.md 迁移对照表) reaches the browser route and asks for consent
-R08 `collect feishu --mode mcp` (SKILL.md 迁移对照表: feishu_mcp_client.py → collect feishu) reaches the MCP route
-R08 a contract channel that is not shipped is reported as planned (PR \#185 正文: collect/planned-channel), never as an unknown channel
 R56 `blind-test prepare` works with the relative --out the handoff (§8) and the blind-test README use
 R16 three sources for one person never share an anchor id
 R16 SKILL.md's simplest flow — one subtitle plus one `note` — keeps the note's anchor distinct from the subtitle's

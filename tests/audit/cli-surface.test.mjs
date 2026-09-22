@@ -44,8 +44,18 @@ const CONTRACT_COMMANDS = [
   "uninstall",
 ];
 
-/** CONTRACT.md §1 line 25: `collect <feishu|slack|dingtalk|x|discord|reddit|notion|gmail>`. */
-const CONTRACT_CHANNELS = ["feishu", "slack", "dingtalk", "x", "discord", "reddit", "notion", "gmail"];
+/** Members of the first `collect <…>` group in CONTRACT.md §1. */
+function contractChannels() {
+  const text = readFileSync(join(repoRoot, "docs", "v2", "CONTRACT.md"), "utf8");
+  const lines = text.split("\n");
+  const heading = lines.findIndex((line) => /^##\s+1\./.test(line));
+  const open = lines.findIndex((line, index) => index > heading && line.startsWith("```"));
+  const close = lines.findIndex((line, index) => index > open && line.startsWith("```"));
+  const block = lines.slice(open + 1, close).join("\n");
+  const match = block.match(/^collect <([^>\n]+)>/m);
+  if (!match) throw new Error("CONTRACT §1 has no collect <channel> group");
+  return match[1].split("|").map((channel) => channel.trim());
+}
 
 test("R01/R04 every CONTRACT §1 command answers --help with a Chinese and an English section", () => {
   const ws = workspace();
@@ -75,26 +85,26 @@ test("R01 the global --help lists all eight hosts and does not leave a contract 
 
 test("R08 `collect --help` names every channel CONTRACT §1 promises", () => {
   const ws = workspace();
+  const channels = contractChannels();
   const run = distilly(["collect", "--help"], { cwd: ws.root, env: { HOME: ws.home } });
   assert.equal(run.status, 0);
-  const missing = CONTRACT_CHANNELS.filter((channel) => !run.stdout.includes(channel));
-  assert.deepEqual(missing, [], `collect --help does not mention: ${missing.join(", ")}`);
+  assert.equal(run.stdout.split("\n")[0], `distilly collect <${channels.join("|")}> [options] [--json]`);
+  const missing = channels.filter((channel) => !run.stdout.includes(channel));
+  assert.deepEqual(missing, []);
 });
 
-for (const channel of ["discord", "reddit", "notion", "gmail"]) {
-  test(`R08 \`collect ${channel} --json\` is a known channel (CONTRACT §1 line 25), so its failure is about credentials, not about the channel name`, () => {
+for (const channel of contractChannels()) {
+  test(`R08 \`collect ${channel} --json\` is a channel CONTRACT §1 names, so the refusal is not collect/unknown-channel`, () => {
     const ws = workspace();
     const run = distilly(["collect", channel, "--person", "p", "--json"], {
       cwd: ws.root,
       env: { HOME: ws.home, DISTILLY_HOME: ws.distillyHome },
     });
     const body = receipt(run);
-    // Literal contrast. Expected: no unknown-channel error; the receipt's
-    // `unavailable[0]` names the channel and the credential file it is missing.
-    // Observed on dot-skill-test: {"code":"collect/unknown-channel","message":"unsupported channel: <channel>","remedy":"known channels: feishu, slack, dingtalk, x"}, exit 2.
-    assert.notEqual(body.error?.code, "collect/unknown-channel", `receipt.error=${JSON.stringify(body.error)}`);
-    assert.equal(body.unavailable?.[0]?.channel, channel);
-    assert.match(String(body.unavailable?.[0]?.reason ?? ""), new RegExp(`${channel}_config\\.json|credential`));
+    assert.equal(run.status, 1);
+    assert.equal(body.error?.code, undefined);
+    assert.equal(body.unavailable[0].channel, channel);
+    assert.equal(body.credential_file, `${channel}_config.json`);
   });
 }
 
@@ -115,8 +125,7 @@ test("R08 every collection module under src/collect/ is reachable from bin/disti
   const collectDir = join(repoRoot, "src", "collect");
   const modules = readdirSync(collectDir).filter((name) => name.endsWith(".mjs") && name !== "kit.mjs").sort();
   const unreachable = modules.filter((name) => !seen.has(join(collectDir, name)));
-  // Observed on dot-skill-test: discord.mjs, feishu-browser.mjs, feishu-mcp.mjs, gmail.mjs, notion.mjs, reddit.mjs.
-  assert.deepEqual(unreachable, [], `src/collect modules no distilly command can reach: ${unreachable.join(", ")}`);
+  assert.deepEqual(unreachable, []);
 });
 
 test("R02/R03 `harvest --json` writes one receipt object to stdout with the eight contract fields", () => {

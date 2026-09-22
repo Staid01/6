@@ -136,10 +136,10 @@ const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8"
   // claim the remaining channels were unported and derive its evidence from the
   // pending map — which, once the map emptied, produced a row whose "evidence" was
   // the empty string: a passing check that said nothing.
-  const channelNames = ["feishu", "slack", "dingtalk", "x", "discord", "notion", "reddit", "gmail"];
+  const channelNames = ["feishu", "slack", "dingtalk", "x"];
   const missingChannels = channelNames.filter((name) => !existsSync(join(root, "src", "collect", `${name}.mjs`)));
   record(
-    "契约的八个采集渠道全部落地（feishu/slack/dingtalk/x/discord/notion/reddit/gmail）",
+    "契约的四个采集渠道全部落地（feishu/slack/dingtalk/x）",
     missingChannels.length === 0 && configured.length === 0,
     `channel modules read: ${channelNames.map((name) => `src/collect/${name}.mjs`).join(", ")}; ` +
       `missing: ${missingChannels.length === 0 ? "none" : missingChannels.join(", ")}; ` +

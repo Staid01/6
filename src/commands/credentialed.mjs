@@ -19,6 +19,23 @@ const CHANNELS = {
   x: () => import("../collect/x.mjs"),
 };
 
+/** Channels omitted here do not accept `--mode`. */
+const CHANNEL_MODES = {
+  feishu: ["api", "browser", "mcp"],
+  dingtalk: ["api", "browser"],
+  x: ["api", "browser"],
+};
+
+const collectUsage = `distilly collect <${Object.keys(CHANNELS).join("|")}> [options] [--json]`;
+
+function modeFlag(argv) {
+  const index = argv.indexOf("--mode");
+  if (index === -1) return null;
+  const value = argv[index + 1];
+  if (value === undefined || value.startsWith("--")) return { value: null };
+  return { value };
+}
+
 /** Run `fn` with stdout/stderr captured, so the dispatcher owns the output. */
 async function capture(fn) {
   const originalOut = process.stdout.write.bind(process.stdout);
@@ -118,14 +135,16 @@ async function runModule(load, argv, { json, reporter }) {
 const collectHelp = {
   zh: [
     "用法 / Usage:",
-    "  distilly collect <feishu|slack|dingtalk|x> [options] [--json]",
+    `  ${collectUsage}`,
+    "  distilly collect feishu --mode <api|browser|mcp>",
     "  distilly collect x --mode browser --consent <token>   # computer use，需显式同意",
     "",
     "需要凭据的渠道由脚本负责鉴权/分页/限流/续采；缺 key 或缺同意 → 响亮失败并给补救步骤，",
     "回执与日志里只出现配置文件名，永不出现 key 值。",
   ].join("\n"),
   en: [
-    "Distilly collect — credentialed channels (feishu, slack, dingtalk, x).",
+    `Distilly collect — credentialed channels (${Object.keys(CHANNELS).join(", ")}).`,
+    "  distilly collect feishu --mode <api|browser|mcp>",
     "Browser collection requires `--consent <token>`; without it the command exits 2.",
     "Receipts and logs name the credential file, never its contents.",
   ].join("\n"),
@@ -133,12 +152,12 @@ const collectHelp = {
 
 register("collect", {
   summary: "需要凭据的渠道采集 / credentialed collection",
-  usage: "distilly collect <feishu|slack|dingtalk|x> [options] [--json]",
+  usage: collectUsage,
   ...collectHelp,
   async run({ argv, json, reporter }) {
     const [channel, ...rest] = argv;
     if (!channel || channel === "--help" || channel === "help") {
-      reporter.line(`Usage: distilly collect <${Object.keys(CHANNELS).join("|")}> [options] [--json]`);
+      reporter.line(`Usage: ${collectUsage}`);
       return { receipt: undefined, exitCode: channel ? 0 : 2 };
     }
     const load = CHANNELS[channel];
@@ -157,6 +176,32 @@ register("collect", {
         },
         exitCode: 2,
       };
+    }
+    const mode = modeFlag(rest);
+    if (mode) {
+      const legal = CHANNEL_MODES[channel] ?? [];
+      if (!legal.includes(mode.value)) {
+        const listed = legal.length > 0 ? legal.join(", ") : "none";
+        return {
+          receipt: {
+            command: "collect",
+            person: null,
+            ok: false,
+            mode: mode.value,
+            inputs: [],
+            outputs: [],
+            anchors: { total: 0, cited: 0 },
+            warnings: [],
+            unavailable: [],
+            error: {
+              code: "collect/usage",
+              message: mode.value === null ? "--mode requires a value" : `unsupported --mode: ${mode.value}`,
+              remedy: `legal --mode values: ${listed}`,
+            },
+          },
+          exitCode: 2,
+        };
+      }
     }
     return runModule(load, rest, { json, reporter });
   },
