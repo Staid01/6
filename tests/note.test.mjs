@@ -44,7 +44,12 @@ test("the frozen contract's command list is now fully implemented", () => {
   assert.deepEqual(Object.keys(PLANNED), [], "PLANNED must be empty once every contract command exists");
   const doctor = run(["doctor", "--json"]);
   assert.equal(doctor.status, 0);
-  assert.deepEqual(doctor.receipt.unavailable, []);
+  assert.deepEqual(doctor.receipt.unavailable, [
+    { channel: "feishu", reason: "no credential at ~/.distilly/feishu_config.json" },
+    { channel: "slack", reason: "no credential at ~/.distilly/slack_config.json" },
+    { channel: "dingtalk", reason: "no credential at ~/.distilly/dingtalk_config.json" },
+    { channel: "x", reason: "no credential at ~/.distilly/x_config.json" },
+  ]);
 });
 
 test("note records the text verbatim, with anchors and model-read provenance", () => {
