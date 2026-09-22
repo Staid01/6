@@ -19,6 +19,7 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import {
   getCharacterPreset,
   getResearchProfilePreset,
+  manifestInstallers,
   normalizeCharacter,
   normalizeResearchProfile,
 } from "./presets.mjs";
@@ -493,11 +494,7 @@ export function buildManifest(meta) {
         "opencode",
       ],
       min_schema_version: SCHEMA_VERSION,
-      installers: {
-        "claude-code": "tools/install_claude_generated_skill.py",
-        openclaw: "tools/install_openclaw_generated_skill.py",
-        codex: "tools/install_codex_generated_skill.py",
-      },
+      installers: manifestInstallers(),
       slash_commands: {
         default: artifacts.combined_command,
         work: artifacts.work_command,

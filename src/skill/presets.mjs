@@ -10,6 +10,8 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 
+import { AGENTS } from "../hosts/agents.mjs";
+
 export const COMMON_KNOWLEDGE_DIRS = ["docs", "messages", "emails"];
 
 export const DEFAULT_RESEARCH_PROFILE = "budget-friendly";
@@ -185,6 +187,13 @@ export function normalizeCharacter(character) {
 /** Return the preset for the given character family. */
 export function getCharacterPreset(character) {
   return CHARACTER_PRESETS[normalizeCharacter(character)];
+}
+
+export function manifestInstallers() {
+  return AGENTS.map((agent) => ({
+    host: agent.id,
+    command: `node bin/distilly.mjs install ${agent.id}`,
+  }));
 }
 
 /** Normalize a research profile for the selected character family. */

@@ -26,6 +26,30 @@ import { validatePathSegment } from "../src/skill/schema.mjs";
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
+const EXPECTED_INSTALLERS = [
+  { host: "claude-code", command: "node bin/distilly.mjs install claude-code" },
+  { host: "codex", command: "node bin/distilly.mjs install codex" },
+  { host: "opencode", command: "node bin/distilly.mjs install opencode" },
+  { host: "openclaw", command: "node bin/distilly.mjs install openclaw" },
+  { host: "hermes", command: "node bin/distilly.mjs install hermes" },
+  { host: "deepseek-harness", command: "node bin/distilly.mjs install deepseek-harness" },
+  { host: "grok-build", command: "node bin/distilly.mjs install grok-build" },
+  { host: "pi", command: "node bin/distilly.mjs install pi" },
+];
+
+function assertManifestInstallers(manifest) {
+  const installers = manifest.install.installers;
+  assert.ok(Array.isArray(installers));
+  for (const item of installers) {
+    const command = item?.command;
+    const pathExists = typeof command === "string" && existsSync(join(projectRoot, command));
+    const isNodeInstall = command === `node bin/distilly.mjs install ${item.host}`;
+    assert.equal(pathExists || isNodeInstall, true, JSON.stringify(item));
+  }
+  assert.deepEqual(installers, EXPECTED_INSTALLERS);
+  assert.equal(JSON.stringify(manifest).includes(".py"), false);
+}
+
 function tempDir() {
   return mkdtempSync(join(tmpdir(), "dst-writer-"));
 }
@@ -104,8 +128,7 @@ test("create colleague uses portable names and adds the engine schema", () => {
       "pi",
       "opencode",
     ]);
-    assert.equal(manifest.install.installers.openclaw, "tools/install_openclaw_generated_skill.py");
-    assert.equal(manifest.install.installers.codex, "tools/install_codex_generated_skill.py");
+    assertManifestInstallers(manifest);
     assert.match(combinedSkill, /name: colleague-zhangsan/);
     assert.match(combinedSkill, /## PART A: Work/);
     assert.match(workSkill, /name: colleague-zhangsan-work/);
@@ -135,6 +158,7 @@ test("create relationship uses the character preset metadata", () => {
     assert.equal(savedMeta.compat.legacy_storage_root, "skills/relationship");
     assert.equal(manifest.id, "meta-skill.relationship.mireille");
     assert.equal(manifest.character, "relationship");
+    assertManifestInstallers(manifest);
     assert.equal(savedMeta.artifacts.combined_command, "relationship-mireille");
     assert.match(combinedSkill, /name: relationship-mireille/);
   } finally {
@@ -238,6 +262,7 @@ test("create celebrity adds research dirs and the toolchain", () => {
     assert.equal(savedMeta.engine.research_profile, "budget-friendly");
     assert.ok("research_tools" in manifest.toolchain);
     assert.equal(manifest.research_profile, "budget-friendly");
+    assertManifestInstallers(manifest);
     assert.deepEqual(savedMeta.classification.tags, ["literature", "essay", "public-intellectual"]);
     assert.match(savedMeta.summary, /Novelist/);
     assert.match(savedMeta.summary, /Essay and criticism/);
@@ -401,6 +426,7 @@ test("update regenerates the manifest and archives the artifacts", () => {
     assert.equal(savedMeta.corrections_count, 1);
     assert.ok(existsSync(join(skillDir, "versions", "v1", "manifest.json")));
     assert.equal(manifest.entrypoints.default, "SKILL.md");
+    assertManifestInstallers(manifest);
     assert.match(personaDoc, /apologize/);
     assert.match(personaDoc, /ask for evidence/);
   } finally {
