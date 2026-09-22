@@ -129,6 +129,44 @@ test("a bad map fails loudly and changes nothing", () => {
   }
 });
 
+test("a duplicate handle exits 2 and writes no files", () => {
+  const box = sandbox();
+  try {
+    const dup = join(box.root, "dup.json");
+    writeFileSync(
+      dup,
+      `${JSON.stringify({ people: [{ name: "A", handles: ["x"] }, { name: "B", handles: ["x"] }] })}\n`,
+      "utf8",
+    );
+    const clash = runCli(["harvest", CORPUS, "--person", "lin-gong", "--base-dir", box.root, "--identity", dup, "--json"]);
+    assert.equal(clash.status, 2, clash.stderr);
+    const refused = parseReceipt(clash.stdout);
+    assert.equal(refused.error.code, "harvest/identity");
+    assert.equal(refused.error.message, 'identity.json: handle "x" is claimed by both "A" and "B"');
+    assert.equal(existsSync(box.personDir), false, "a duplicate handle must not create the Skill directory");
+  } finally {
+    rmSync(box.root, { recursive: true, force: true });
+  }
+});
+
+test("a person with no handles is a warning and harvest still records", () => {
+  const box = sandbox();
+  try {
+    const map = join(box.root, "no-handles.json");
+    writeFileSync(map, `${JSON.stringify({ people: [{ name: "林工" }] })}\n`, "utf8");
+    const harvested = runCli(["harvest", CORPUS, "--person", "lin-gong", "--base-dir", box.root, "--identity", map, "--json"]);
+    assert.equal(harvested.status, 0, harvested.stderr);
+    const body = parseReceipt(harvested.stdout);
+    assert.equal(body.ok, true);
+    assert.ok(
+      body.warnings.includes('"林工" lists no handles; only its own name is canonicalised'),
+      `warnings=${JSON.stringify(body.warnings)}`,
+    );
+  } finally {
+    rmSync(box.root, { recursive: true, force: true });
+  }
+});
+
 test("the helpers are pure and the map keeps a record of its own decisions", () => {
   const identity = { map: new Map([["ou_lin", "林工"]]) };
   assert.equal(canonicalSpeaker("ou_lin", identity), "林工");
