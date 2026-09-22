@@ -10,9 +10,6 @@ R08 `collect feishu --mode browser` (SKILL.md 迁移对照表) reaches the brows
 R08 `collect feishu --mode mcp` (SKILL.md 迁移对照表: feishu_mcp_client.py → collect feishu) reaches the MCP route
 R08 a contract channel that is not shipped is reported as planned (PR \#185 正文: collect/planned-channel), never as an unknown channel
 R56 `blind-test prepare` works with the relative --out the handoff (§8) and the blind-test README use
-R16 three sources for one person never share an anchor id
-R16 SKILL.md's simplest flow — one subtitle plus one `note` — keeps the note's anchor distinct from the subtitle's
-R17 harvesting the same directory twice leaves ledger, text files and derived output unchanged
 R21 identity.json: a handle claimed twice exits 2 with the exact message and writes nothing
 R21 identity.json with a person that lists no handles is a warning, not a crash
 R28 a document's labels (根因：/ 时间线：) are not counted as participants in a multi-source person

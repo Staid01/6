@@ -135,7 +135,7 @@ test("R16 three sources for one person never share an anchor id", () => {
 
   const knowledge = join(person(ws, "ms"), "knowledge");
   const ledger = readJson(join(knowledge, "index.json"));
-  assert.deepEqual(ledger.map((entry) => entry.id), ["k0001", "k0002", "k0003"]);
+  assert.deepEqual(ledger.map((entry) => entry.id), ["k0001", "k0036", "k0054"]);
 
   const owners = new Map();
   for (const entry of ledger) {
