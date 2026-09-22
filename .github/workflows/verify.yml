@@ -1,0 +1,88 @@
+name: Verify
+
+# Every gate is a file under tests/gates/. This workflow only decides which gates
+# run where; what "green" means lives in those files and changes only by editing
+# them. Runs on every branch push and every pull request, whatever the base branch,
+# so a stacked PR gets the same verdict as trunk. No remote name is assumed.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    name: Gates (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: List the gates this run enforces
+        run: node scripts/run-gates.mjs --list
+
+      # The PR body is a claim like any other. The entry-surface gate reads it as a
+      # claims file, so an error code or channel the description promises but the
+      # CLI does not answer with fails the gate.
+      - name: Save the PR body as a claims file
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr view "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --json body -q .body > "$RUNNER_TEMP/pr-body.md"
+          echo "CLAIMS_FILE=$RUNNER_TEMP/pr-body.md" >> "$GITHUB_ENV"
+
+      - name: Run every gate that needs no browser
+        run: node scripts/run-gates.mjs --without playwright
+
+      - name: Entry surface report (full, for the reviewer)
+        if: always()
+        run: node scripts/check-entry-surface.mjs --baseline tests/gates/baseline/entry-surface.txt ${CLAIMS_FILE:+--claims "$CLAIMS_FILE"} | tee "$RUNNER_TEMP/entry-surface.txt" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: entry-surface-node${{ matrix.node }}
+          path: ${{ runner.temp }}/entry-surface.txt
+          if-no-files-found: ignore
+
+  gates-playwright:
+    name: Gates needing Playwright (Node 22)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # playwright is a dev-time dependency of visual-check only and never ships.
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright@1.62.1
+          npx playwright install --with-deps chromium
+
+      - name: Run every gate that needs a browser
+        env:
+          DISTILLY_PLAYWRIGHT_ROOT: ${{ github.workspace }}
+        run: node scripts/run-gates.mjs --requires playwright
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acceptance-evidence
+          path: |
+            ${{ runner.temp }}/evidence-synthetic-interview
+            ${{ runner.temp }}/evidence-us-house
+            ${{ runner.temp }}/evidence-multisource
+          if-no-files-found: ignore
