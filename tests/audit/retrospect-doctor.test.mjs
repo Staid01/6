@@ -163,7 +163,7 @@ test("R24 after retrospect, `doctor --require-shape` fails the C-SPAN floor corp
   const shape = gated.body.shape.find((item) => item.slug === "colleague/us-house");
   assert.equal(shape.units, 2744);
   assert.equal(shape.sources, 2);
-  assert.equal(shape.speakers, 18);
+  assert.equal(shape.speakers, 14);
   assert.equal(shape.top_speaker, "THE SPEAKER PRO TEMPORE");
   assert.deepEqual(shape.reasons, [
     "这是多人材料，但只有 3% 的单元能归到某个说话人（阈值 40%）：先补这个人自己的一手产出（本人访谈/演讲字幕、本人文章），不要从会议流水里切人",

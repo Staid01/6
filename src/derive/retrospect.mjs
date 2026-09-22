@@ -443,7 +443,9 @@ function splitBlock(line, sourceKind) {
   }
 
   let speaker = null;
-  if (!DOCUMENT_KINDS.has(sourceKind)) {
+  // A file with no ledger kind is not a parsed turn. A second harvest can leave
+  // that body behind, and a colon in it is a label, not a speaker.
+  if (sourceKind && !DOCUMENT_KINDS.has(sourceKind)) {
     const marked = parserSpeaker(rest);
     if (marked) {
       speaker = marked.name;
