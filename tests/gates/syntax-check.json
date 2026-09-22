@@ -1,0 +1,6 @@
+{
+  "id": "syntax-check",
+  "group": "unit",
+  "command": "find bin src scripts tests -name '*.mjs' -print0 | xargs -0 -n1 node --check",
+  "pass": { "exit": 0 }
+}

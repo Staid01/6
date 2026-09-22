@@ -1,0 +1,6 @@
+{
+  "id": "template-fresh",
+  "group": "unit",
+  "command": "node scripts/generate-template.mjs --check",
+  "pass": { "exit": 0, "stdout_contains": ["template is up to date"] }
+}

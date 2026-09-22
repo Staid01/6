@@ -1,0 +1,9 @@
+{
+  "id": "unit-tests",
+  "group": "unit",
+  "command": "npm test",
+  "pass": {
+    "exit": 0,
+    "stdout_regex": ["^# tests \\d+$", "^# fail 0$", "^# cancelled 0$"]
+  }
+}

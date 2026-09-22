@@ -1,0 +1,12 @@
+{
+  "id": "audit-tests",
+  "group": "unit",
+  "command": "node --test --test-reporter=tap --test-reporter-destination=stdout tests/audit/*.test.mjs",
+  "pass": {
+    "ratchet": {
+      "parser": "tap",
+      "baseline": "tests/gates/baseline/audit-tests.txt",
+      "final": { "exit": 0 }
+    }
+  }
+}

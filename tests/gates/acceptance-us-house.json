@@ -1,0 +1,13 @@
+{
+  "id": "acceptance-us-house",
+  "group": "acceptance",
+  "requires": ["playwright"],
+  "command": "node scripts/acceptance.mjs --corpus tests/fixtures/public-corpus/us-house-floor-2009-07-29 --person us-house --evidence \"${RUNNER_TEMP:-/tmp}/evidence-us-house\"",
+  "pass": {
+    "ratchet": {
+      "parser": "acceptance",
+      "baseline": "tests/gates/baseline/acceptance-us-house.txt",
+      "final": { "exit": 0, "stdout_contains": ["验收结果：18/18 通过", "FAIL · units=2744 speakers=18 attributed=175"] }
+    }
+  }
+}
