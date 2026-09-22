@@ -13,10 +13,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { parseReceipt, runCli } from "./helpers/cli.mjs";
 import { resolveSkillsRoot } from "../src/cli/paths.mjs";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const INTERVIEW_CORPUS = join(here, "fixtures", "public-corpus", "synthetic-interview");
+const HOUSE_CORPUS = join(here, "fixtures", "public-corpus", "us-house-floor-2009-07-29");
 
 /** base/skills/colleague/<slug> with a ledger and a derived claim. */
 function fixture({ dangling = false } = {}) {
@@ -145,40 +150,18 @@ test("doctor counts what the generated Skill cites, not only the derived layer",
   }
 });
 
-/** base/skills/colleague/demo with a ledger of N anchors and a per-speaker voice claim. */
-function shapeFixture({ anchors, speakers }) {
-  const base = mkdtempSync(join(tmpdir(), "dst-shape-"));
-  const skillDir = join(base, "skills", "colleague", "demo");
-  mkdirSync(join(skillDir, "knowledge"), { recursive: true });
-  mkdirSync(join(skillDir, "evidence", "derived"), { recursive: true });
-  const ids = Array.from({ length: anchors }, (_, index) => `k${String(index + 1).padStart(4, "0")}`);
-  writeFileSync(
-    join(skillDir, "knowledge", "index.json"),
-    `${JSON.stringify([{ id: "k0001", kind: "subtitle", bytes: 1, sha256: "a".repeat(64), anchors: ids }], null, 2)}\n`,
-    "utf8",
-  );
-  const by_speaker = {};
-  for (const [name, samples] of Object.entries(speakers)) by_speaker[name] = { samples };
-  writeFileSync(
-    join(skillDir, "evidence", "derived", "voice.json"),
-    `${JSON.stringify({ kind: "voice", claims: [{ id: "voice.sentence_length", value: { by_speaker } }] }, null, 2)}\n`,
-    "utf8",
-  );
-  return base;
-}
-
 test("the corpus shape check passes on a corpus that can carry a person", () => {
-  // 40 citable units, three speakers, three quarters of the units attributable and a
-  // clear lead — a meeting in which one person is actually the subject.
-  const base = shapeFixture({ anchors: 40, speakers: { 张三: 15, 李四: 10, 主持人: 5 } });
+  const base = mkdtempSync(join(tmpdir(), "dst-shape-"));
   try {
+    const harvested = runCli(["harvest", INTERVIEW_CORPUS, "--person", "lin-gong", "--base-dir", base, "--json"]);
+    assert.equal(harvested.status, 0, harvested.stderr);
     const run = runCli(["doctor", "--base-dir", base, "--require-shape", "--json"]);
     assert.equal(run.status, 0, run.stderr);
     const receipt = parseReceipt(run.stdout);
     assert.equal(receipt.shape.length, 1);
     assert.equal(receipt.shape[0].verdict, "PASS");
-    assert.equal(receipt.shape[0].units, 40);
-    assert.equal(receipt.shape[0].attributed_units, 30);
+    assert.equal(receipt.shape[0].speakers, 2);
+    assert.equal(receipt.shape[0].top_speaker, "林工");
     assert.deepEqual(receipt.shape[0].reasons, []);
     assert.equal(receipt.verdict, "PASS");
   } finally {
@@ -187,19 +170,16 @@ test("the corpus shape check passes on a corpus that can carry a person", () => 
 });
 
 test("the corpus shape check catches a multi-speaker corpus nobody can be cut out of", () => {
-  // The real failure this exists for: a 47-minute floor proceeding, 2744 anchors, 18
-  // speakers, 3% of units attributable. It ran the whole five-step mainline and
-  // produced a portrait of a room, because nothing asked "is this the right material"
-  // before Distill. Without `--require-shape` the verdict is reported only; with it,
-  // the command fails.
-  const base = shapeFixture({ anchors: 100, speakers: { A: 2, B: 1, C: 1 } });
+  const base = mkdtempSync(join(tmpdir(), "dst-shape-"));
   try {
+    const harvested = runCli(["harvest", HOUSE_CORPUS, "--person", "us-house", "--base-dir", base, "--json"]);
+    assert.equal(harvested.status, 0, harvested.stderr);
     const reported = runCli(["doctor", "--base-dir", base, "--json"]);
     assert.equal(reported.status, 0, "reporting a bad shape is not itself a failure");
     const soft = parseReceipt(reported.stdout);
     assert.equal(soft.shape[0].verdict, "FAIL");
     assert.equal(soft.ok, true);
-    assert.match(soft.shape[0].reasons.join("\n"), /只有 4% 的单元能归到某个说话人/);
+    assert.match(soft.shape[0].reasons.join("\n"), /只有 3% 的单元能归到某个说话人/);
     assert.match(soft.shape[0].reasons.join("\n"), /不要从会议流水里切人/);
 
     const gated = runCli(["doctor", "--base-dir", base, "--require-shape", "--json"]);
@@ -248,13 +228,18 @@ test("doctor fails when views/<slug>.view.json cites an anchor the ledger does n
 });
 
 test("too little material fails the shape check before quality is even discussed", () => {
-  const base = shapeFixture({ anchors: 5, speakers: {} });
+  const base = mkdtempSync(join(tmpdir(), "dst-shape-tiny-"));
+  const corpus = mkdtempSync(join(tmpdir(), "dst-tiny-corpus-"));
   try {
+    writeFileSync(join(corpus, "note.md"), "hello world. a short note.\n", "utf8");
+    const harvested = runCli(["harvest", corpus, "--person", "demo", "--base-dir", base, "--json"]);
+    assert.equal(harvested.status, 0, harvested.stderr);
     const receipt = parseReceipt(runCli(["doctor", "--base-dir", base, "--json"]).stdout);
     assert.equal(receipt.shape[0].verdict, "FAIL");
-    assert.match(receipt.shape[0].reasons.join("\n"), /可引用单元只有 5 个，低于 20/);
+    assert.match(receipt.shape[0].reasons.join("\n"), /可引用单元只有 \d+ 个，低于 20/);
     assert.match(receipt.shape[0].notes.join("\n"), /没有说话人标注/);
   } finally {
     rmSync(base, { recursive: true, force: true });
+    rmSync(corpus, { recursive: true, force: true });
   }
 });
