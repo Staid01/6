@@ -11,9 +11,10 @@
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
-import { register, PLANNED } from "./index.mjs";
+import { register } from "./index.mjs";
 import { createReceipt, describeFile, displayPath } from "../cli/receipt.mjs";
 import { parseArgs } from "../cli/args.mjs";
 import { listAgents } from "../hosts/agents.mjs";
@@ -352,17 +353,93 @@ function readLedger(skillDir) {
   };
 }
 
+function configHome() {
+  const override = process.env.DISTILLY_HOME;
+  if (typeof override === "string" && override.trim() !== "") return override.trim();
+  return join(homedir(), ".distilly");
+}
+
+function displayConfigHome(home) {
+  return home === join(homedir(), ".distilly") ? "~/.distilly" : home;
+}
+
+function unavailableFrom(channels) {
+  const home = configHome();
+  const shown = displayConfigHome(home);
+  const unavailable = [];
+  for (const channel of Object.keys(channels)) {
+    const file = `${channel}_config.json`;
+    if (existsSync(join(home, file))) continue;
+    unavailable.push({ channel, reason: `no credential at ${shown}/${file}` });
+  }
+  return unavailable;
+}
+
+function loadLedgerEntries(skillDir) {
+  const ledgerPath = join(skillDir, "knowledge", "index.json");
+  if (!existsSync(ledgerPath)) return [];
+  try {
+    const parsed = JSON.parse(readFileSync(ledgerPath, "utf8"));
+    const entries = Array.isArray(parsed) ? parsed : (parsed.entries ?? []);
+    return Array.isArray(entries) ? entries : [];
+  } catch {
+    return [];
+  }
+}
+
+function classifyProvenance(entry) {
+  const method = String(entry?.method ?? "");
+  if (method === "model-read" || method.includes("model-read")) return "model-read";
+  const credentialed = Boolean(entry?.credentialed);
+  if (credentialed && /browser/i.test(method)) return "browser";
+  if (credentialed) return "api";
+  return "file";
+}
+
+function emptyProvenanceBucket() {
+  return { entries: 0, bytes: 0, share: 0 };
+}
+
+function summarizeProvenance(entries) {
+  const buckets = {
+    "model-read": emptyProvenanceBucket(),
+    browser: emptyProvenanceBucket(),
+    api: emptyProvenanceBucket(),
+    file: emptyProvenanceBucket(),
+  };
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") continue;
+    const key = classifyProvenance(entry);
+    buckets[key].entries += 1;
+    buckets[key].bytes += Number(entry.bytes) || 0;
+  }
+  const totalBytes =
+    buckets["model-read"].bytes + buckets.browser.bytes + buckets.api.bytes + buckets.file.bytes;
+  for (const key of ["model-read", "browser", "api", "file"]) {
+    buckets[key].share = totalBytes === 0 ? 0 : buckets[key].bytes / totalBytes;
+  }
+  // browser is the computer-use share; the extra key is so the receipt JSON names it.
+  buckets["computer-use"] = buckets.browser;
+  return buckets;
+}
+
+function formatShare(share) {
+  return `${(share * 100).toFixed(0)}%`;
+}
+
 register("doctor", {
   summary: "体检宿主与 Skill 库存 / Health-check hosts and skill inventory",
   usage: "distilly doctor [--base-dir <dir>] [--require-shape] [--json]",
   options: OPTIONS,
   ...doctorHelp(),
-  run({ argv, reporter }) {
+  async run({ argv, reporter }) {
     const { flags } = parseArgs(argv, OPTIONS);
     const requireShape = Boolean(flags["require-shape"]);
     const warnings = [];
     const inputs = [];
     const outputs = [];
+    const seenLedgers = new Set();
+    const provenanceEntries = [];
 
     reporter.line("Hosts / 宿主:");
     const hostRows = [];
@@ -412,6 +489,10 @@ register("doctor", {
           const personDir = join(baseDir, entry);
           const ledgerPath = join(personDir, "knowledge", "index.json");
           if (!existsSync(ledgerPath)) continue;
+          if (!seenLedgers.has(ledgerPath)) {
+            seenLedgers.add(ledgerPath);
+            provenanceEntries.push(...loadLedgerEntries(personDir));
+          }
           const shaped = corpusShape(personDir, readLedger(personDir));
           const { warnings: shapeWarnings = [], ...shape } = shaped;
           for (const line of shapeWarnings) {
@@ -501,12 +582,14 @@ register("doctor", {
       reporter.line(`Verdict / 判定：PASS —— 0 悬空引用${coverage === null ? "" : `；账本覆盖 ${(coverage * 100).toFixed(0)}%`}`);
     }
 
-    const unavailable = Object.entries(PLANNED).map(([command, branch]) => ({
-      channel: command,
-      reason: `not implemented in this build; delivered by ${branch}`,
-    }));
+    const { CHANNELS } = await import("./credentialed.mjs");
+    const unavailable = unavailableFrom(CHANNELS);
+    const provenance = summarizeProvenance(provenanceEntries);
     reporter.line("");
     reporter.line(`Unavailable / 未实现：${unavailable.map((item) => item.channel).join(", ")}`);
+    reporter.line(
+      `Provenance / 来源：model-read ${provenance["model-read"].entries} (${formatShare(provenance["model-read"].share)})  computer-use ${provenance.browser.entries} (${formatShare(provenance.browser.share)})  api ${provenance.api.entries} (${formatShare(provenance.api.share)})  file ${provenance.file.entries} (${formatShare(provenance.file.share)})`,
+    );
 
     // `createReceipt` keeps exactly the eight contract fields, so anything command
     // specific has to be attached to the object afterwards.
@@ -529,6 +612,7 @@ register("doctor", {
     // a caller most often wants to read programmatically (`--json` is the
     // machine interface), and it was reachable only through the internal `extra`.
     receipt.hosts = hostRows.map(({ host, installed, path }) => ({ host, installed, path }));
+    receipt.provenance = provenance;
     return { receipt, extra: { hosts: hostRows, skills: skillCount } };
   },
 });
