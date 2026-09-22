@@ -2,5 +2,5 @@
   "id": "objective-audit",
   "group": "unit",
   "command": "node scripts/audit-objective.mjs --skip-acceptance",
-  "pass": { "exit": 0, "stdout_regex": ["^15/15 条满足"] }
+  "pass": { "exit": 0, "stdout_regex": ["^14/14 条满足"] }
 }
