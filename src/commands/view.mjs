@@ -9,11 +9,12 @@
  * diagnostics) rather than thrown, so `--json` always yields one object.
  */
 
-import { relative, resolve } from "node:path";
+import { existsSync, readdirSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 
 import { register } from "./index.mjs";
 import { CliError, createReceipt } from "../cli/receipt.mjs";
-import { checkView, expectedSlug, formatDiagnostic, normalizeView } from "../views/schema.mjs";
+import { checkView, expectedSlug, formatDiagnostic, normalizeView, readLedgerAnchorSet } from "../views/schema.mjs";
 import { ViewError, findViewDocuments, loadViewDocument, renderView } from "../views/render.mjs";
 
 const OPTIONS = {
@@ -75,6 +76,35 @@ function resolveViewPath(options) {
   return candidates[0];
 }
 
+function findLedgerPath(options, viewPath) {
+  const candidates = [];
+  const consider = (candidate) => {
+    if (candidate && !candidates.includes(candidate)) candidates.push(candidate);
+  };
+  consider(join(dirname(dirname(viewPath)), "knowledge", "index.json"));
+  const root = resolve(options.root);
+  consider(join(root, "knowledge", "index.json"));
+  if (options.slug) {
+    const skillsRoot = join(root, "skills");
+    if (existsSync(skillsRoot)) {
+      for (const family of readdirSync(skillsRoot)) {
+        consider(join(skillsRoot, family, options.slug, "knowledge", "index.json"));
+      }
+    }
+  }
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function ledgerCheckOptions(options, viewPath) {
+  const ledgerPath = findLedgerPath(options, viewPath);
+  if (ledgerPath) return { ledgerAnchors: readLedgerAnchorSet(ledgerPath) ?? new Set() };
+  if (options.file) return { ledgerAbsent: true };
+  return {};
+}
+
 function helpFor(sub) {
   const zh = [
     "用法：",
@@ -106,7 +136,12 @@ const checkCommand = {
     const options = parseViewArgs(argv);
     const viewPath = resolveViewPath(options);
     const document = loadViewDocument(viewPath);
-    const report = checkView(document.view, { viewPath: document.path, shareable: options.shareable, allowMissing: options.allowMissing });
+    const report = checkView(document.view, {
+      viewPath: document.path,
+      shareable: options.shareable,
+      allowMissing: options.allowMissing,
+      ...ledgerCheckOptions(options, document.path),
+    });
     const normalized = normalizeView(document.view).view;
     const receipt = {
       ...createReceipt("view check", {
@@ -140,6 +175,25 @@ const renderCommand = {
   run({ argv, json, reporter }) {
     const options = parseViewArgs(argv);
     const viewPath = resolveViewPath(options);
+    const document = loadViewDocument(viewPath);
+    const preview = checkView(document.view, {
+      viewPath: document.path,
+      shareable: options.shareable,
+      allowMissing: options.allowMissing,
+      ...ledgerCheckOptions(options, document.path),
+    });
+    if (!preview.ok) {
+      const receipt = {
+        ...createReceipt("view render", { ok: false }),
+        diagnostics: preview.diagnostics,
+        supported_fixes: ["run: distilly view check <slug>", "every diagnostic carries supportedFixes[]"],
+      };
+      if (!json) {
+        reporter.error(`Error: view.json failed view check with ${preview.errors.length} error(s); fix them before rendering`);
+        for (const entry of preview.diagnostics) reporter.error(formatDiagnostic(entry));
+      }
+      return { receipt, exitCode: 1 };
+    }
     try {
       const result = renderView({
         allowMissing: options.allowMissing,

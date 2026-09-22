@@ -6,7 +6,8 @@
  *
  * Zero runtime dependencies.
  */
-import { basename } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 
 /** The eight page segments, in page order. The eighth is derived from `evidence[]`. */
 export const REQUIRED_SECTIONS = Object.freeze([
@@ -105,6 +106,65 @@ export function expectedSlug(viewPath) {
   const name = basename(String(viewPath ?? ""));
   const match = /^(.*)\.view\.json$/.exec(name);
   return match ? match[1] : null;
+}
+
+/** Every id `knowledge/index.json` declares, matching doctor's resolvedAnchors walk. */
+export function readLedgerAnchorSet(ledgerPath) {
+  if (!ledgerPath || !existsSync(ledgerPath)) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(ledgerPath, "utf8"));
+  } catch {
+    return null;
+  }
+  const entries = Array.isArray(parsed) ? parsed : (parsed?.entries ?? []);
+  const known = new Set();
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") continue;
+    if (typeof entry.id === "string") known.add(entry.id);
+    for (const anchor of entry.anchors ?? []) {
+      const id = typeof anchor === "string" ? anchor : anchor?.anchor ?? anchor?.id;
+      if (id) known.add(id);
+    }
+    for (const unit of entry.units ?? []) {
+      const id = unit?.anchor ?? unit?.id;
+      if (id) known.add(id);
+    }
+    for (const detail of entry.anchor_detail ?? []) {
+      const id = detail?.anchor ?? detail?.id;
+      if (id) known.add(id);
+    }
+  }
+  return known;
+}
+
+function ledgerPathNearView(viewPath) {
+  if (!viewPath) return null;
+  return join(dirname(dirname(viewPath)), "knowledge", "index.json");
+}
+
+function ledgerSetFromOptions(options) {
+  if (options.ledgerAnchors instanceof Set) return options.ledgerAnchors;
+  if (Array.isArray(options.ledgerAnchors)) return new Set(options.ledgerAnchors);
+  if (options.ledgerAnchors === false) return null;
+  return readLedgerAnchorSet(ledgerPathNearView(options.viewPath));
+}
+
+/** Walk every `anchors[]` in a view document. Paths are RENDER §6 subject.path values. */
+function eachAnchorsArray(value, path, visit) {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => eachAnchorsArray(item, `${path}[${index}]`, visit));
+    return;
+  }
+  if (!isPlainObject(value)) return;
+  if (Array.isArray(value.anchors)) {
+    const prefix = path ? `${path}.anchors` : "anchors";
+    value.anchors.forEach((anchor, index) => visit(`${prefix}[${index}]`, anchor));
+  }
+  for (const [key, child] of Object.entries(value)) {
+    if (key === "anchors") continue;
+    eachAnchorsArray(child, path ? `${path}.${key}` : key, visit);
+  }
 }
 
 class Report {
@@ -680,6 +740,33 @@ export function checkView(view, options = {}) {
       ['start from { "meta": {...}, "sections": [...], "evidence": [...] }'],
     );
     return finish(report, { shareable, sections: 0, items: 0, evidence: 0, cited: 0, anchors: 0 });
+  }
+
+  const known = ledgerSetFromOptions(options);
+  if (known) {
+    eachAnchorsArray(view, "", (path, anchor) => {
+      if (typeof anchor !== "string" || !ANCHOR_PATTERN.test(anchor)) return;
+      if (known.has(anchor)) return;
+      report.diagnostics.push({
+        code: "view/orphan-anchor",
+        severity: "error",
+        message: `anchor "${anchor}" is not declared in knowledge/index.json`,
+        subject: { path, identity: anchor },
+        evidence: { observed: anchor, ledger: "knowledge/index.json" },
+        supportedFixes: [
+          "cite an id that exists in knowledge/index.json",
+          "run distilly harvest so the ledger records the source of this claim",
+        ],
+      });
+    });
+  } else if (options.ledgerAbsent === true) {
+    report.warn(
+      "VIEW_LEDGER_ABSENT",
+      "VIEW_LEDGER_ABSENT: no knowledge/index.json beside this view; anchors were not checked against a ledger",
+      { path: options.viewPath ?? "view.json", identity: null },
+      { observed: "absent" },
+      ["pass --person or --base-dir so view check can read knowledge/index.json"],
+    );
   }
 
   checkMeta(report, view.meta, slug);

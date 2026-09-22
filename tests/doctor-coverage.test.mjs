@@ -212,6 +212,41 @@ test("the corpus shape check catches a multi-speaker corpus nobody can be cut ou
   }
 });
 
+test("doctor fails when views/<slug>.view.json cites an anchor the ledger does not declare", () => {
+  const { base, skillDir } = fixture();
+  try {
+    mkdirSync(join(skillDir, "views"), { recursive: true });
+    writeFileSync(
+      join(skillDir, "views", "demo.view.json"),
+      `${JSON.stringify(
+        {
+          headline: { anchors: ["k9999"] },
+          sections: [
+            {
+              claims: [{ anchors: ["k9999"] }],
+              items: [{ text: "悬空锚点", anchors: ["k9999"], confidence: "low" }],
+              points: [{ anchors: ["k9999"] }],
+            },
+          ],
+          points: [{ anchors: ["k9999"] }],
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    const run = runCli(["doctor", "--base-dir", base, "--json"]);
+    assert.equal(run.status, 1, "a view.json citation the ledger does not declare must fail doctor");
+    const receipt = parseReceipt(run.stdout);
+    assert.equal(receipt.ok, false);
+    assert.equal(receipt.verdict, "FAIL");
+    assert.equal(receipt.anchors.dangling, 1, `doctor reported ${JSON.stringify(receipt.anchors)} for a view.json citing k9999`);
+    assert.match(receipt.warnings.join("\n"), /k9999/);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
 test("too little material fails the shape check before quality is even discussed", () => {
   const base = shapeFixture({ anchors: 5, speakers: {} });
   try {
