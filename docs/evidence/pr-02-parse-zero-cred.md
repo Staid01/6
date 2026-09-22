@@ -1,3 +1,5 @@
+> 描述的是按会话转录重建的 `ds/NN-*` 分支快照，不是本栈。
+
 # PR-02 · 零凭据解析：`knowledge/` 账本 + 锚点 + chat/subtitle/archive 解析
 
 - 分支：`ds/02-parse-zero-cred`（6 个提交，已本地合并进 `dot-skill-test`）

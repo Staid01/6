@@ -1,3 +1,5 @@
+> 描述的是按会话转录重建的 `ds/NN-*` 分支快照，不是本栈。
+
 # PR-15 · 跨渠道身份映射（`identity.json`）
 
 - 分支：`ds/15-identity`（本地，合并进 `dot-skill-test`）

@@ -1,3 +1,5 @@
+> 描述的是按会话转录重建的 `ds/NN-*` 分支快照，不是本栈。
+
 # PR-20 · 仓库忽略规则：把用户数据、凭据与本地证据的边界补回来
 
 - 分支：`ds/20-repo-hygiene`（worktree `/tmp/dot-skill-test-20`，已本地合并进 `dot-skill-test`）

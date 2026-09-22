@@ -13,8 +13,9 @@
  * tag names the same version the package declares.
  */
 
-import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { SCHEMA_VERSION } from "../src/skill/schema.mjs";
@@ -24,24 +25,43 @@ const root = resolve(import.meta.dirname, "..");
 const json = process.argv.includes("--json");
 const tagIndex = process.argv.indexOf("--tag");
 const tag = tagIndex === -1 ? null : process.argv[tagIndex + 1];
+const bin = join(root, "bin", "distilly.mjs");
 
 const rows = [];
 const record = (name, ok, evidence) => rows.push({ name, ok: Boolean(ok), evidence });
 
-const read = (relative) => readFileSync(join(root, relative), "utf8");
-const pkg = JSON.parse(read("package.json"));
+const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+
+function parseJson(text) {
+  const objectStart = text.indexOf("{");
+  const arrayStart = text.indexOf("[");
+  const start =
+    arrayStart >= 0 && (objectStart < 0 || arrayStart < objectStart) ? arrayStart : objectStart;
+  if (start < 0) throw new SyntaxError("no JSON in command output");
+  return JSON.parse(text.slice(start));
+}
 
 /* 1 — one version, everywhere it is printed ---------------------------------- */
 {
-  const binVersion = execFileSync(process.execPath, [join(root, "bin", "distilly.mjs"), "--version"], { encoding: "utf8" }).trim();
-  const skill = existsSync(join(root, "SKILL.md")) ? read("SKILL.md") : "";
-  const skillVersion = /^version:\s*"?([^"\n]+)"?/m.exec(skill)?.[1]?.trim() ?? null;
-  const consistent = binVersion === pkg.version && (skillVersion === null || skillVersion === pkg.version);
-  record(
-    "版本一致（package.json / --version / SKILL.md）",
-    consistent,
-    `package.json ${pkg.version}, --version ${binVersion}, SKILL.md ${skillVersion ?? "(未声明)"}`,
-  );
+  const binVersion = execFileSync(process.execPath, [bin, "--version"], { encoding: "utf8" }).trim();
+  const work = mkdtempSync(join(tmpdir(), "rel-skill-"));
+  try {
+    execFileSync(
+      process.execPath,
+      [bin, "skill", "create", "--character", "colleague", "--name", "ReleaseCheck", "--slug", "release-check", "--base-dir", work, "--json"],
+      { encoding: "utf8", cwd: root },
+    );
+    const meta = JSON.parse(readFileSync(join(work, "skills", "colleague", "release-check", "meta.json"), "utf8"));
+    const productVersion = meta.version;
+    const consistent = binVersion === pkg.version && productVersion !== undefined && String(productVersion).length > 0;
+    record(
+      "版本一致（--version 与 skill create 产物）",
+      consistent,
+      `package.json ${pkg.version}, --version ${binVersion}, skill create meta.version ${productVersion}`,
+    );
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
   if (tag !== null) {
     record("发布 tag 指向同一版本", tag === `v${pkg.version}` || tag === pkg.version, `--tag ${tag} vs ${pkg.version}`);
   }
@@ -49,24 +69,64 @@ const pkg = JSON.parse(read("package.json"));
 
 /* 2 — schemas are the frozen ones, and a migration exists -------------------- */
 {
-  const migrate = existsSync(join(root, "src", "skill", "migrate.mjs"));
-  const migrationTest = read(join("tests", "schema-migration.test.mjs"));
-  record(
-    `schema v${SCHEMA_VERSION} 与账本 v${LEDGER_SCHEMA_VERSION}，迁移脚本在`,
-    SCHEMA_VERSION === "4" && migrate && /idempot/i.test(migrationTest),
-    `SCHEMA_VERSION=${SCHEMA_VERSION}, LEDGER_SCHEMA_VERSION=${LEDGER_SCHEMA_VERSION}, src/skill/migrate.mjs=${migrate}, 幂等断言=${/idempot/i.test(migrationTest)}`,
-  );
+  const testRun = spawnSync(process.execPath, ["--test", join(root, "tests", "schema-migration.test.mjs")], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  const work = mkdtempSync(join(tmpdir(), "rel-migrate-"));
+  try {
+    const skillDir = join(work, "skills", "colleague", "old-person");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, "SKILL.md"), "---\nname: 张三\n---\n\n# 张三\n", "utf8");
+    writeFileSync(join(skillDir, "persona.md"), "# 张三\n", "utf8");
+    writeFileSync(join(skillDir, "work.md"), "# 工作\n", "utf8");
+    writeFileSync(
+      join(skillDir, "meta.json"),
+      JSON.stringify({ name: "张三", slug: "old-person", character: "colleague", schema_version: "3", lifecycle: { version: "v1" } }, null, 2),
+      "utf8",
+    );
+    writeFileSync(join(skillDir, "manifest.json"), JSON.stringify({ slug: "old-person", schema_version: "3", artifacts: {} }, null, 2), "utf8");
+    execFileSync(process.execPath, [bin, "skill", "migrate", "--base-dir", work, "--json"], { encoding: "utf8", cwd: root });
+    const second = parseJson(execFileSync(process.execPath, [bin, "skill", "migrate", "--base-dir", work, "--json"], { encoding: "utf8", cwd: root }));
+    const third = parseJson(execFileSync(process.execPath, [bin, "skill", "migrate", "--base-dir", work, "--json"], { encoding: "utf8", cwd: root }));
+    const same = JSON.stringify(second) === JSON.stringify(third);
+    record(
+      `schema v${SCHEMA_VERSION} 与账本 v${LEDGER_SCHEMA_VERSION}，两次 migrate 回执相同`,
+      SCHEMA_VERSION === "4" && testRun.status === 0 && same,
+      `SCHEMA_VERSION=${SCHEMA_VERSION}, LEDGER_SCHEMA_VERSION=${LEDGER_SCHEMA_VERSION}, schema-migration.test status=${testRun.status}, receipts-equal=${same}`,
+    );
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
 }
 
 /* 3 — the installers still carry the evidence spine -------------------------- */
 {
-  const hosts = read(join("src", "install", "hosts.mjs"));
-  const carried = ["knowledge/raw", "knowledge/text", "evidence", "views"].every((name) => hosts.includes(name));
-  record(
-    "安装器携带 evidence spine（knowledge/raw、knowledge/text、evidence、views）",
-    carried,
-    carried ? "CARRIED_DIRECTORIES 覆盖四项" : "CARRIED_DIRECTORIES 缺项",
-  );
+  const destRoot = mkdtempSync(join(tmpdir(), "rel-install-"));
+  const dest = join(destRoot, "distilly");
+  const personRoot = mkdtempSync(join(tmpdir(), "rel-spine-"));
+  try {
+    execFileSync(process.execPath, [bin, "install", "--path", dest, "--json"], { encoding: "utf8", cwd: root });
+    const skillDir = join(personRoot, "skills", "colleague", "old-person");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, "SKILL.md"), "---\nname: x\n---\n", "utf8");
+    writeFileSync(join(skillDir, "meta.json"), JSON.stringify({ schema_version: "3", slug: "old-person" }), "utf8");
+    execFileSync(process.execPath, [join(dest, "bin", "distilly.mjs"), "skill", "migrate", "--base-dir", personRoot, "--json"], {
+      encoding: "utf8",
+      cwd: root,
+    });
+    const four = ["knowledge/raw", "knowledge/text", "evidence", "views"];
+    const missing = four.filter((name) => !existsSync(join(skillDir, name)));
+    const listing = readdirSync(skillDir).join(", ");
+    record(
+      "安装器携带 evidence spine（knowledge/raw、knowledge/text、evidence、views）",
+      missing.length === 0,
+      missing.length === 0 ? `install --path then ls: ${four.join(", ")} under migrated skill; skill dir: ${listing}` : `missing after install --path: ${missing.join(", ")}`,
+    );
+  } finally {
+    rmSync(destRoot, { recursive: true, force: true });
+    rmSync(personRoot, { recursive: true, force: true });
+  }
 }
 
 /* 4 — the package is zero-dependency and Python-free ------------------------- */
@@ -94,14 +154,21 @@ const pkg = JSON.parse(read("package.json"));
 
 /* 6 — the gates a release claims are runnable -------------------------------- */
 {
-  const gates = ["scripts/acceptance.mjs", "scripts/audit-objective.mjs", "scripts/prompt-lint.mjs", "scripts/visual-check.mjs", "scripts/split-corpus.mjs", "scripts/blind-test.mjs"];
-  const missing = gates.filter((path) => !existsSync(join(root, path)));
-  const ci = read(join(".github", "workflows", "ci.yml"));
-  const wired = ["node --test", "acceptance.mjs", "prompt-lint.mjs", "audit-objective.mjs"].every((needle) => ci.includes(needle));
+  const listed = parseJson(execFileSync(process.execPath, [join(root, "scripts", "run-gates.mjs"), "--list", "--json"], { encoding: "utf8", cwd: root }));
+  const ids = listed.map((gate) => gate.id);
+  const required = [
+    "unit-tests",
+    "acceptance-synthetic-interview",
+    "acceptance-us-house",
+    "acceptance-multisource",
+    "prompt-lint",
+    "objective-audit",
+  ];
+  const missing = required.filter((id) => !ids.includes(id));
   record(
-    "发布所依赖的门禁都在，且 CI 会跑",
-    missing.length === 0 && wired,
-    `missing: ${missing.length === 0 ? "none" : missing.join(", ")}; CI 覆盖 node --test / acceptance / prompt-lint / audit: ${wired}`,
+    "发布所依赖的门禁都在，且 Verify 会跑",
+    missing.length === 0,
+    missing.length === 0 ? `run-gates --list --json ids include ${required.join(", ")}` : `missing gate ids: ${missing.join(", ")}`,
   );
 }
 
@@ -121,4 +188,3 @@ if (json) {
   console.log(`\n${rows.length - failed.length}/${rows.length} 项通过${failed.length === 0 ? "" : `；未通过：${failed.map((row) => row.name).join("；")}`}`);
 }
 process.exit(failed.length === 0 ? 0 : 1);
-

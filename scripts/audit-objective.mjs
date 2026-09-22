@@ -37,12 +37,19 @@ const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8"
 {
   const tracked = git("ls-files").split("\n");
   const python = tracked.filter((path) => /\.py$/.test(path) || /(^|\/)requirements\.txt$/.test(path));
-  const ci = readFileSync(join(root, ".github", "workflows", "ci.yml"), "utf8");
-  const pythonCi = /python-version|setup-python|pip install/.test(ci);
+  const verify = readFileSync(join(root, ".github", "workflows", "verify.yml"), "utf8");
+  const pythonCi = /python-version|setup-python|pip install/.test(verify);
+  const listed = JSON.parse(
+    execFileSync(process.execPath, [join(root, "scripts", "run-gates.mjs"), "--list", "--json"], { cwd: root, encoding: "utf8" }),
+  );
+  const ids = listed.map((gate) => gate.id);
+  const nodeGates = ["unit-tests", "syntax-check"].every((id) => ids.includes(id));
   record(
     "Node 单栈：仓库里没有 Python / requirements.txt，CI 只跑 Node",
-    python.length === 0 && !pythonCi,
-    python.length === 0 ? `0 tracked .py files; CI jobs: ${(ci.match(/^\s{2}[a-z-]+:$/gm) ?? []).map((line) => line.trim()).join(" ")}` : `still tracked: ${python.slice(0, 5).join(", ")}`,
+    python.length === 0 && !pythonCi && nodeGates,
+    python.length === 0
+      ? `0 tracked .py files; verify.yml Python steps: ${pythonCi}; run-gates ids include unit-tests/syntax-check: ${nodeGates}`
+      : `still tracked: ${python.slice(0, 5).join(", ")}`,
   );
 }
 

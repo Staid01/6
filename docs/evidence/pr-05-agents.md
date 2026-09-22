@@ -1,3 +1,5 @@
+> 描述的是按会话转录重建的 `ds/NN-*` 分支快照，不是本栈。
+
 # PR-05 · coding-agent 适配层：矩阵文档与防漂移断言
 
 - 分支：`ds/05-agents`（基于 `dot-skill-test`）

@@ -73,6 +73,28 @@ register("parse-doc", {
     const { options, paths } = parsed;
     if (!options.person) return fail("--person is required", "parse-doc/usage");
 
+    const pdf = paths.find((target) => resolve(target).toLowerCase().endsWith(".pdf"));
+    if (pdf) {
+      return {
+        receipt: {
+          command: "parse-doc",
+          person: options.person,
+          ok: false,
+          inputs: [],
+          outputs: [],
+          anchors: { total: 0, cited: 0 },
+          warnings: [],
+          unavailable: [],
+          error: {
+            code: "office/unsupported-format",
+            message: `${pdf}: PDF is not supported`,
+            remedy: "extract the text and register it with `distilly note --from <file|->`",
+          },
+        },
+        exitCode: 2,
+      };
+    }
+
     const personDir = resolve(options.baseDir, "skills", "colleague", options.person);
     const store = new KnowledgeStore(personDir);
     const ledger = loadLedger(store);

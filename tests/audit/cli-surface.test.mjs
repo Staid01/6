@@ -15,7 +15,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { distilly, fixtures, readJson, receipt, repoRoot, workspace } from "./helpers.mjs";
@@ -185,11 +185,25 @@ test("R10 an unknown command exits 1 with code unknown-command and a remedy", ()
 
 test("R23 `parse-doc` advertises pdf alongside docx and xlsx (CONTRACT §1 line 22)", () => {
   const ws = workspace();
-  const run = distilly(["parse-doc", "--help"], { cwd: ws.root, env: { HOME: ws.home } });
-  assert.equal(run.status, 0);
-  assert.match(run.stdout, /docx/);
-  assert.match(run.stdout, /xlsx/);
-  assert.match(run.stdout, /pdf/i, "CONTRACT §1 promises `parse-doc <x.docx|xlsx|pdf>`");
+  const helpRun = distilly(["parse-doc", "--help"], { cwd: ws.root, env: { HOME: ws.home } });
+  assert.equal(helpRun.status, 0);
+  assert.match(helpRun.stdout, /docx/);
+  assert.match(helpRun.stdout, /xlsx/);
+  assert.equal(/pdf/i.test(helpRun.stdout), false, "parse-doc --help must not promise pdf");
+
+  const pdf = join(ws.root, "fake.pdf");
+  writeFileSync(pdf, "%PDF-1.4\n");
+  const before = new Set(readdirSync(ws.root, { recursive: true }));
+  const run = distilly(["parse-doc", pdf, "--person", "p", "--base-dir", ws.root, "--json"], {
+    cwd: ws.root,
+    env: { HOME: ws.home, DISTILLY_HOME: ws.distillyHome },
+  });
+  assert.equal(run.status, 2, run.stderr);
+  const body = receipt(run);
+  assert.equal(body.error?.code, "office/unsupported-format");
+  assert.match(String(body.error?.remedy ?? ""), /note --from/);
+  const after = new Set(readdirSync(ws.root, { recursive: true }));
+  assert.deepEqual([...after].sort(), [...before].sort());
 });
 
 test("R12/R58 zero runtime dependencies, engines.node >= 20, and no Python in the tree", () => {

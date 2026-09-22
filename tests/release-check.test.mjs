@@ -35,3 +35,13 @@ test("a mismatched release tag fails the run", () => {
   assert.equal(tagRow.ok, false);
   assert.match(tagRow.evidence, /v9\.9\.9/);
 });
+
+test("release check criteria are executable, not text-grep", () => {
+  const result = spawnSync(process.execPath, [join(HERE, "scripts", "check-entry-surface.mjs")], {
+    cwd: HERE,
+    encoding: "utf8",
+  });
+  const block = result.stdout.slice(result.stdout.indexOf("release check criteria"));
+  assert.ok(block.length > 0, "entry-surface must print release check criteria");
+  assert.equal(/text-grep/.test(block), false, block);
+});

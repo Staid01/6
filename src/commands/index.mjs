@@ -19,8 +19,8 @@
  *
  * Names may contain one space (`view check`, `skill create`); dispatch prefers
  * the two-token name. Commands promised by `docs/v2/CONTRACT.md` §1 but not yet
- * implemented are listed in `PLANNED` together with the branch that owns them,
- * so an unfinished build reports "not implemented" instead of "unknown command".
+ * registered live in `PLANNED`. An empty map means the CLI reports unknown
+ * command rather than "not implemented". Remaining product work is in ROADMAP.md.
  */
 
 import { CliError } from "../cli/receipt.mjs";
@@ -37,12 +37,10 @@ function registry() {
   return REGISTRY;
 }
 
-/** Commands frozen in CONTRACT §1 whose implementation ships in another branch. */
+/** Commands frozen in CONTRACT §1 that this CLI has not registered. */
 export const PLANNED = {
-  // Contract §1 is fully implemented on this branch (the command surface, the
-  // eight collection channels, note, view, skill migrate). The map stays because
-  // `missingCommandError` and `doctor` read it to explain what is *not* here;
-  // it being empty is the signal that nothing is outstanding.
+  // Empty: every CONTRACT §1 command this CLI registers is present. Product
+  // work that is not a registered command lives in ROADMAP.md, not this map.
 };
 
 /**
@@ -138,17 +136,17 @@ export function padDisplay(text, width) {
 }
 
 const CATALOG_ZH = [
-  ["skill create|update|list|version", "创建 / 更新 / 列出 / 归档 Skill（本分支）"],
-  ["install <host>", "把 Distilly 装进某个宿主的 skills 目录（本分支）"],
-  ["uninstall [<host>|--path]", "卸载已安装的 Distilly（本分支）"],
-  ["doctor", "宿主与 Skill 库存体检（本分支，最小版）"],
+  ["skill create|update|list|version|migrate", "创建 / 更新 / 列出 / 归档 / 迁移 Skill"],
+  ["install <host>", "把 Distilly 装进某个宿主的 skills 目录"],
+  ["uninstall [<host>|--path]", "卸载已安装的 Distilly"],
+  ["doctor", "宿主与 Skill 库存体检"],
 ];
 
 const CATALOG_EN = [
-  ["skill create|update|list|version", "create / update / list / archive Skills (this branch)"],
-  ["install <host>", "install Distilly into a host skills directory (this branch)"],
-  ["uninstall [<host>|--path]", "remove an installed Distilly (this branch)"],
-  ["doctor", "host and skill inventory health check (this branch, minimal)"],
+  ["skill create|update|list|version|migrate", "create / update / list / archive / migrate Skills"],
+  ["install <host>", "install Distilly into a host skills directory"],
+  ["uninstall [<host>|--path]", "remove an installed Distilly"],
+  ["doctor", "host and skill inventory health check"],
 ];
 
 /** Bilingual help for the whole CLI (CONTRACT §6: 中文 → `---` → English). */

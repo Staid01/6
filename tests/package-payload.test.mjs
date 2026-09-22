@@ -17,6 +17,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -133,7 +134,7 @@ test("these fixtures never write through to the repository manifest", () => {
   assert.equal(readFileSync(manifestPath, "utf8"), before, "the repository manifest must be untouched");
 });
 
-test("`npm test` and CI run the same command, and every path it names exists", () => {
+test("`npm test` and Verify run the same unit gate, and every path it names exists", () => {
   // A bare `node --test` also collects `scripts/blind-test.mjs` (`**/*-test.mjs`)
   // and records it as a passing "test" — which is how CI went red while every local
   // command looked green.
@@ -148,8 +149,19 @@ test("`npm test` and CI run the same command, and every path it names exists", (
   // Node 20 receives real paths (as it requires), while Node 22 — which treats a
   // positional argument as a glob of its own and refuses a bare directory with
   // `Cannot find module '…/tests'` — receives paths it can also handle.
-  const ci = readFileSync(path.join(root, ".github", "workflows", "ci.yml"), "utf8");
-  assert.match(ci, /^\s*run: npm test\s*$/m, "CI must invoke `npm test`");
+  assert.equal(existsSync(path.join(root, ".github", "workflows", "ci.yml")), false, "ci.yml must be gone");
+  const verify = readFileSync(path.join(root, ".github", "workflows", "verify.yml"), "utf8");
+  assert.match(verify, /node scripts\/run-gates\.mjs --without playwright/, "Verify must invoke run-gates --without playwright");
+
+  const listed = spawnSync(process.execPath, [path.join(root, "scripts", "run-gates.mjs"), "--list", "--json"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  assert.equal(listed.status, 0, listed.stderr);
+  const ids = JSON.parse(listed.stdout).map((gate) => gate.id);
+  for (const id of ["unit-tests", "acceptance-synthetic-interview", "acceptance-us-house", "acceptance-multisource", "prompt-lint", "objective-audit"]) {
+    assert.ok(ids.includes(id), `run-gates --list --json must include ${id}`);
+  }
 
   const argv = manifest.scripts.test.split(/\s+/);
   assert.equal(argv[0], "node");
@@ -165,20 +177,20 @@ test("`npm test` and CI run the same command, and every path it names exists", (
   }
 });
 
-test("`engines` matches what CI actually tests", () => {
-  const ci = readFileSync(path.join(root, ".github", "workflows", "ci.yml"), "utf8");
-  const matrix = /node-version:\s*\[([^\]]+)\]/.exec(ci)?.[1] ?? "";
+test("`engines` matches what Verify actually tests", () => {
+  const verify = readFileSync(path.join(root, ".github", "workflows", "verify.yml"), "utf8");
+  const matrix = /node:\s*\[([^\]]+)\]/.exec(verify)?.[1] ?? "";
   const versions = matrix.split(",").map((entry) => entry.trim().replace(/"/g, ""));
   const minimum = Number(manifest.engines.node.replace(/[^\d]/g, ""));
-  assert.ok(versions.length > 0, "CI must declare a node-version matrix");
+  assert.ok(versions.length > 0, "Verify must declare a node matrix");
   for (const version of versions) {
     assert.ok(
       Number(version) >= minimum,
-      `CI tests Node ${version} but the package claims to need >= ${minimum}`,
+      `Verify tests Node ${version} but the package claims to need >= ${minimum}`,
     );
   }
   assert.ok(
     versions.includes(String(minimum)),
-    `the oldest supported Node (${minimum}) is not in the CI matrix, so the floor is untested`,
+    `the oldest supported Node (${minimum}) is not in the Verify matrix, so the floor is untested`,
   );
 });

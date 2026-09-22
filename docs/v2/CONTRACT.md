@@ -19,21 +19,20 @@ harvest <dir|file>            零凭据：目录/文件 → knowledge/
 parse-chat <export.json>      ChatGPT / Claude / Slack 导出 / Telegram / Discord
 parse-email <x.eml|.mbox>
 parse-subtitle <x.srt|.vtt>
-parse-doc <x.docx|xlsx|pdf>
+parse-doc <x.docx|xlsx>
 parse-archive <x.zip|dir>     X 官方归档 / Takeout / Discord / Telegram / Instagram / Facebook / LinkedIn
 retrospect                    纯派生 → evidence/derived/*.json（跑两次字节相同）
 collect <feishu|slack|dingtalk|x|discord|reddit|notion|gmail>   要 key / OAuth
 collect x --mode browser --consent <token>                      computer use（无 token → exit 2）
 transcribe <audio|video>      可选后端（OpenAI 兼容 HTTP 或宿主能力）
 note --from <file|->          把 LLM 自己读到的内容登记进账本（method:"model-read"）
-consent <grant|list|revoke>   ~/.distilly/consent.json
+consent <grant|list|verify|revoke|prune>   ~/.distilly/consent.json
 view check | view render [--shareable]
 doctor                        证据覆盖率 / 不可用渠道 / 锚点回指率 / computer-use 占比
 skill <create|update|list|version>
+skill migrate
 install <host> | uninstall
 ```
-
-迁移期兼容：旧的 `python3 tools/xxx.py` 调用由 `bin/distilly.mjs` 转发并打印 deprecation 警告（PR① 内实现，PR③ 删除）。
 
 ## 2. 磁盘契约
 
@@ -80,7 +79,6 @@ skills/<family>/<slug>/
 - 确定性：同一输入**跑两次 sha256 相同**（派生类命令）。
 - 锚点完整性：`docs`/`views` 里引用的每个锚点必须能在 `knowledge/index.json` 回指。
 - prompt 契约 lint：命令名必须真实存在、双语两段一致、锚点格式统一、禁止明文密钥字样。
-- HTML 产物：内部链接 0 坏链 + axe（WCAG 2.2 A/AA）0 violations（serious/critical）。
 
 ## 6. 双语
 

@@ -20,6 +20,8 @@ Distilly is a local-first product for turning a person's source material, workin
 
 ## 这一支（`dot-skill-test`）：人物 Skill + 证据脊柱
 
+栈停在 `dot-skill-test`，`dot-skill` 保留。
+
 **把一个人的原材料蒸馏成一个可调用的人物 Skill，外加一份每条结论都能回指到原文的画像页。**
 零运行时依赖，只要 Node ≥ 20。
 
@@ -33,7 +35,7 @@ Distilly is a local-first product for turning a person's source material, workin
 
 **这份实现与那条 Plugin 路线的区别，一句话**：它不追求"像不像"，它保证"凭什么这么说"——
 每条结论都能回指到原文的字节区间（`[k00NN]` 锚点），派生可复跑（同一输入两次字节相同），
-交付物由机械门禁压住（验收 17 项，含"产物齐 / Layer 0–5 齐 / 悬空锚点=0"）。
+交付物由机械门禁压住（验收 18 项，含"产物齐 / Layer 0–5 齐 / 悬空锚点=0"）。
 
 ### 装到一个宿主（以 DeepSeek Harness 为例）
 
@@ -50,9 +52,9 @@ node bin/distilly.mjs install deepseek-harness     # → $DSH_HOME/skills/distil
 ### 怎么验
 
 ```bash
-npm test                       # 391 项，Node 20 与 22 各一遍
-node scripts/acceptance.mjs --corpus tests/fixtures/public-corpus/synthetic-interview --person lin-gong   # 17/17
-DISTILLY_PLAYWRIGHT_ROOT=<含 node_modules 的目录> node scripts/audit-objective.mjs                        # 15/15
+npm test                       # 397 项，Node 20 与 22 各一遍
+node scripts/acceptance.mjs --corpus tests/fixtures/public-corpus/synthetic-interview --person lin-gong   # 18/18
+DISTILLY_PLAYWRIGHT_ROOT=<含 node_modules 的目录> node scripts/audit-objective.mjs --skip-acceptance      # 14/14
 ```
 
 **当前状态、已知缺口、分支与 PR 清单**：[`docs/v2/STATUS.md`](docs/v2/STATUS.md)。

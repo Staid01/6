@@ -52,7 +52,7 @@ function parseArgs(argv) {
 }
 
 register("parse-archive", {
-  summary: "读取 docx/xlsx / read OOXML documents into knowledge/",
+  summary: "读取归档 / read X Takeout Discord Telegram archives into knowledge/",
   usage: "distilly parse-archive <file...> --person <slug> [--base-dir <dir>] [--source <label>] [--json]",
   ...help,
   run({ argv, json, reporter }) {
