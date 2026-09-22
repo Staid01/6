@@ -187,3 +187,23 @@ test("two exports under one --source no longer overwrite each other's text", () 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("document labels are not participants in a multi-source person", () => {
+  const root = tempRoot();
+  try {
+    harvest(root, join(here, "fixtures", "public-corpus", "synthetic-multisource"), "ms");
+    const retro = runCli(["retrospect", "--person", "ms", "--base-dir", root, "--json"]);
+    assert.equal(retro.status, 0, retro.stderr);
+    const derived = join(root, "skills", "colleague", "ms", "evidence", "derived");
+    const stats = JSON.parse(readFileSync(join(derived, "stats.json"), "utf8"));
+    const participants = stats.claims.find((claim) => claim.id === "stats.participants").value;
+    const count = stats.claims.find((claim) => claim.id === "stats.participant_count").value;
+    assert.deepEqual(participants, ["林工", "ou_lin", "小明", "老周", "ou_chen", "ou_zhou"]);
+    assert.equal(count, 6);
+    const voice = JSON.parse(readFileSync(join(derived, "voice.json"), "utf8"));
+    const speakers = Object.keys(voice.claims.find((claim) => claim.id === "voice.sentence_length").value.by_speaker).sort();
+    assert.deepEqual(speakers, ["ou_chen", "ou_lin", "ou_zhou", "小明", "林工", "老周"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

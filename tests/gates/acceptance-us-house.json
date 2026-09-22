@@ -7,7 +7,7 @@
     "ratchet": {
       "parser": "acceptance",
       "baseline": "tests/gates/baseline/acceptance-us-house.txt",
-      "final": { "exit": 0, "stdout_contains": ["验收结果：18/18 通过", "FAIL · units=2744 speakers=18 attributed=175"] }
+      "final": { "exit": 0, "stdout_contains": ["验收结果：18/18 通过", "FAIL · units=2744 speakers=14 attributed=86"] }
     }
   }
 }

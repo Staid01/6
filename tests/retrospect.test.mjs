@@ -359,6 +359,35 @@ test("two messages yield empty claim lists and a stated reason", () => {
   }
 });
 
+test("document labels are not participants", () => {
+  const root = mkdtempSync(join(tmpdir(), "distilly-retrospect-labels-"));
+  try {
+    const corpus = join(repoRoot, "tests", "fixtures", "public-corpus", "synthetic-multisource");
+    const harvest = spawnSync(process.execPath, [CLI, "harvest", corpus, "--person", "ms", "--base-dir", root, "--json"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    assert.equal(harvest.status, 0, harvest.stderr);
+    const retro = spawnSync(process.execPath, [CLI, "retrospect", "--person", "ms", "--base-dir", root, "--json"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    assert.equal(retro.status, 0, retro.stderr);
+    const stats = JSON.parse(readFileSync(join(root, "skills", "colleague", "ms", "evidence", "derived", "stats.json"), "utf8"));
+    assert.deepEqual(stats.claims.find((claim) => claim.id === "stats.participants").value, [
+      "林工",
+      "ou_lin",
+      "小明",
+      "老周",
+      "ou_chen",
+      "ou_zhou",
+    ]);
+    assert.equal(stats.claims.find((claim) => claim.id === "stats.participant_count").value, 6);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("the derivation calls no network and no model", () => {
   const forbidden = [
     [/fetch\s*\(/, "fetch()"],
