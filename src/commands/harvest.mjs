@@ -14,6 +14,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSyn
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 
 import { register } from "./index.mjs";
+import { createReceipt } from "../cli/receipt.mjs";
 import { KnowledgeStore, sha256Hex } from "../knowledge/store.mjs";
 import { loadLedger, recordDocument, saveLedger, ledgerStats } from "../knowledge/ledger.mjs";
 import { IDENTITY_FILE, applyIdentity, loadIdentity } from "../knowledge/identity.mjs";
@@ -147,48 +148,85 @@ register("harvest", {
     const parsed = parseHarvestArgs(argv);
     if (parsed.error) {
       return {
-        receipt: { command: "harvest", person: null, ok: false, inputs: [], outputs: [], anchors: { total: 0, cited: 0 }, warnings: [], unavailable: [], error: { code: "harvest/usage", message: parsed.error, remedy: "distilly harvest --help" } },
+        receipt: createReceipt("harvest", {
+          ok: false,
+          error: { code: "harvest/usage", message: parsed.error, remedy: "distilly harvest --help" },
+        }),
         exitCode: 2,
       };
     }
     const { options, paths } = parsed;
     if (!options.person) {
       return {
-        receipt: { command: "harvest", person: null, ok: false, inputs: [], outputs: [], anchors: { total: 0, cited: 0 }, warnings: [], unavailable: [], error: { code: "harvest/usage", message: "--person is required", remedy: "distilly harvest --help" } },
+        receipt: createReceipt("harvest", {
+          ok: false,
+          error: { code: "harvest/usage", message: "--person is required", remedy: "distilly harvest --help" },
+        }),
         exitCode: 2,
       };
     }
 
     const personDir = join(resolve(options.baseDir), "skills", "colleague", options.person);
-    const store = new KnowledgeStore(personDir);
-    const ledger = loadLedger(store);
-    // The map travels with the Skill: `harvest --identity <file>` installs a copy as
-    // `identity.json` so later imports (and the derivation) see the same mapping.
-    let identityPath = null;
+    const warnings = [];
+    let identity = { path: null, map: new Map(), people: [], warnings: [] };
+    // Validate the map before mkdir/copy so a duplicate handle writes nothing.
     if (options.identity) {
       const source = resolve(options.identity);
       if (!existsSync(source)) {
         return {
-          receipt: { command: "harvest", person: options.person, ok: false, inputs: [], outputs: [], anchors: { total: 0, cited: 0 }, warnings: [], unavailable: [], error: { code: "harvest/identity", message: `--identity file not found: ${options.identity}`, remedy: "pass a JSON map with a \"people\" array" } },
+          receipt: createReceipt("harvest", {
+            person: options.person,
+            ok: false,
+            error: {
+              code: "harvest/identity",
+              message: `--identity file not found: ${options.identity}`,
+              remedy: 'pass a JSON map with a "people" array',
+            },
+          }),
+          exitCode: 2,
+        };
+      }
+      try {
+        identity = loadIdentity(personDir, { path: source });
+      } catch (error) {
+        return {
+          receipt: createReceipt("harvest", {
+            person: options.person,
+            ok: false,
+            error: {
+              code: "harvest/identity",
+              message: error.message,
+              remedy: "fix identity.json; a handle may only belong to one person",
+            },
+          }),
           exitCode: 2,
         };
       }
       mkdirSync(personDir, { recursive: true });
       copyFileSync(source, join(personDir, IDENTITY_FILE));
-      identityPath = join(personDir, IDENTITY_FILE);
-    }
-    let identity = { path: null, map: new Map(), people: [], warnings: [] };
-    try {
-      identity = loadIdentity(personDir, identityPath ? { path: identityPath } : {});
-    } catch (error) {
-      return {
-        receipt: { command: "harvest", person: options.person, ok: false, inputs: [], outputs: [], anchors: { total: 0, cited: 0 }, warnings: [], unavailable: [], error: { code: "harvest/identity", message: error.message, remedy: "fix identity.json; a handle may only belong to one person" } },
-        exitCode: 2,
-      };
+      identity.path = join(personDir, IDENTITY_FILE);
+    } else {
+      try {
+        identity = loadIdentity(personDir);
+      } catch (error) {
+        return {
+          receipt: createReceipt("harvest", {
+            person: options.person,
+            ok: false,
+            error: {
+              code: "harvest/identity",
+              message: error.message,
+              remedy: "fix identity.json; a handle may only belong to one person",
+            },
+          }),
+          exitCode: 2,
+        };
+      }
     }
     for (const warning of identity.warnings ?? []) warnings.push(warning);
 
-    const warnings = [];
+    const store = new KnowledgeStore(personDir);
+    const ledger = loadLedger(store);
     const inputs = [];
     const entries = [];
     const files = [];
@@ -231,17 +269,15 @@ register("harvest", {
       { path: relative(process.cwd(), store.ledgerPath), sha256: sha256Hex(readFileSync(store.ledgerPath)), bytes: statSync(store.ledgerPath).size },
     ];
 
-    const receipt = {
-      command: "harvest",
+    const receipt = createReceipt("harvest", {
       person: options.person,
       ok: warnings.filter((warning) => warning.startsWith("unsupported")).length === 0,
       inputs,
       outputs,
       anchors: { total: stats.anchors ?? stats.anchorCount ?? 0, cited: 0 },
-      entries,
       warnings,
-      unavailable: [],
-    };
+    });
+    receipt.entries = entries;
     if (!json) {
       reporter.line(`harvest: ${entries.filter((entry) => entry.appended).length}/${files.length} recorded, ${ledger.length} ledger entries`);
       for (const entry of entries) reporter.line(`  ${entry.id} ${entry.source}${entry.appended ? "" : " (identical bytes already recorded)"}`);
