@@ -467,19 +467,37 @@ function parserSpeaker(rest) {
   return { name, length: prefix[0].length };
 }
 
-/** Ledger `locations.text` → entry `kind`, so a doc or note unit can be told from a turn. */
+/** Path and digest indexes for a ledger row's `kind`.
+ *  A row that names `locations.text` owns that path only. A row with no text
+ *  path still owns the bytes it hashed. A second file with those same bytes
+ *  does not inherit the row, so it has no kind of its own.
+ */
 function sourceKinds(entries) {
-  const map = new Map();
+  const byPath = new Map();
+  const byDigest = new Map();
   for (const entry of entries) {
+    const kind = typeof entry?.kind === "string" ? entry.kind : null;
     const loc = entry?.locations?.text;
-    if (typeof loc !== "string" || loc === "") continue;
-    const kind = typeof entry.kind === "string" ? entry.kind : null;
-    const bare = loc.replace(/^knowledge\//, "");
-    map.set(loc, kind);
-    map.set(bare, kind);
-    map.set(`knowledge/${bare}`, kind);
+    if (typeof loc === "string" && loc !== "") {
+      const bare = loc.replace(/^knowledge\//, "");
+      byPath.set(loc, kind);
+      byPath.set(bare, kind);
+      byPath.set(`knowledge/${bare}`, kind);
+      continue;
+    }
+    if (typeof entry?.sha256 === "string" && entry.sha256 !== "" && !byDigest.has(entry.sha256)) {
+      byDigest.set(entry.sha256, kind);
+    }
   }
-  return map;
+  return { byPath, byDigest };
+}
+
+function kindOfFile(kinds, file) {
+  const recordedAs = file.relativePath.replace(/^knowledge\//, "");
+  if (kinds.byPath.has(file.relativePath)) return kinds.byPath.get(file.relativePath);
+  if (kinds.byPath.has(recordedAs)) return kinds.byPath.get(recordedAs);
+  if (kinds.byDigest.has(file.sha256)) return kinds.byDigest.get(file.sha256);
+  return null;
 }
 
 /**
@@ -596,7 +614,7 @@ function readCorpus(personRoot) {
   const kinds = sourceKinds(ledger.entries);
   const blocks = [];
   for (const file of files) {
-    const sourceKind = kinds.get(file.relativePath) ?? kinds.get(file.relativePath.replace(/^knowledge\//, "")) ?? null;
+    const sourceKind = kindOfFile(kinds, file);
     for (const block of readBlocks(file.text)) blocks.push({ ...block, file: file.relativePath, sourceKind });
     // Provenance is established by the ledger's own record of where the text went,
     // not by comparing a raw-file digest with a normalised-text digest: those are
