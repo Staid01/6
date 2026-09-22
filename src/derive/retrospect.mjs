@@ -151,8 +151,12 @@ const LEADING_TIMESTAMP =
  */
 const LEADING_TIMECODE = /^\s*(\d{1,3}:\d{2}:\d{2}(?:[.,]\d{1,3})?)\s*/;
 
-/** `林工：` / `interviewer: ` at the head of a turn. */
+/**
+ * Turn prefix the parser writes (`林工：` / `interviewer: `).
+ * A document body can start with the same shape (`根因：`). That is not a speaker.
+ */
 const LEADING_SPEAKER = /^([^\d：:\n][^：:\n]{0,23})[：:]\s*/;
+const DOCUMENT_KINDS = new Set(["doc", "note"]);
 
 // ---------------------------------------------------------------------------
 // deterministic primitives
@@ -408,7 +412,7 @@ function readBlocks(text) {
  * Strip anchors, the optional inline timestamp and the optional `speaker:`
  * prefix from a block, returning the three parts.
  */
-function splitBlock(line) {
+function splitBlock(line, sourceKind) {
   let rest = line.replace(ANCHOR_BRACKETS, " ");
   rest = rest.replace(ANCHOR_LEADING, " ");
   let at = null;
@@ -439,12 +443,41 @@ function splitBlock(line) {
   }
 
   let speaker = null;
-  const prefix = LEADING_SPEAKER.exec(rest);
-  if (prefix) {
-    speaker = prefix[1].trim();
-    rest = rest.slice(prefix[0].length);
+  if (!DOCUMENT_KINDS.has(sourceKind)) {
+    const marked = parserSpeaker(rest);
+    if (marked) {
+      speaker = marked.name;
+      rest = rest.slice(marked.length);
+    }
   }
   return { at, atLabel, speaker, text: rest.replace(/\s+/g, " ").trim() };
+}
+
+/**
+ * The name in a parser turn prefix, or null when the line does not carry one.
+ * Document bodies are not passed here: a colon in `根因：` is a label, not a person.
+ */
+function parserSpeaker(rest) {
+  const prefix = LEADING_SPEAKER.exec(rest);
+  if (!prefix) return null;
+  const name = prefix[1].trim();
+  if (name === "") return null;
+  return { name, length: prefix[0].length };
+}
+
+/** Ledger `locations.text` → entry `kind`, so a doc or note unit can be told from a turn. */
+function sourceKinds(entries) {
+  const map = new Map();
+  for (const entry of entries) {
+    const loc = entry?.locations?.text;
+    if (typeof loc !== "string" || loc === "") continue;
+    const kind = typeof entry.kind === "string" ? entry.kind : null;
+    const bare = loc.replace(/^knowledge\//, "");
+    map.set(loc, kind);
+    map.set(bare, kind);
+    map.set(`knowledge/${bare}`, kind);
+  }
+  return map;
 }
 
 /**
@@ -472,7 +505,7 @@ function buildUnits(blocks, ledger) {
   };
 
   for (const block of blocks) {
-    const parts = splitBlock(block.line);
+    const parts = splitBlock(block.line, block.sourceKind);
     const targets = [];
     for (const anchor of block.anchors) {
       const emittable = emittableOf(anchor);
@@ -490,6 +523,7 @@ function buildUnits(blocks, ledger) {
           file: block.file,
           speakers: [],
           texts: [],
+          turns: [],
           ats: [],
           atLabels: [],
         };
@@ -498,6 +532,7 @@ function buildUnits(blocks, ledger) {
       }
       const unit = byAnchor.get(anchor);
       if (parts.speaker !== null) unit.speakers.push(parts.speaker);
+      unit.turns.push({ speaker: parts.speaker, text: parts.text });
       if (parts.at !== null) {
         const millis = toEpochMillis(parts.at);
         unit.ats.push(millis === null ? parts.at : millis);
@@ -519,6 +554,7 @@ function buildUnits(blocks, ledger) {
       chars: countChars(text),
       speaker: speakers.length === 1 ? speakers[0] : null,
       speakers,
+      turns: unit.turns,
       at: ats.length > 0 ? ats[0] : null,
       atLabel: unit.atLabels.length > 0 ? unit.atLabels[0] : null,
       atLast: ats.length > 0 ? ats[ats.length - 1] : null,
@@ -555,9 +591,11 @@ function readCorpus(personRoot) {
   const files = listTextFiles(personRoot);
   const warnings = [];
   const notes = [];
+  const kinds = sourceKinds(ledger.entries);
   const blocks = [];
   for (const file of files) {
-    for (const block of readBlocks(file.text)) blocks.push({ ...block, file: file.relativePath });
+    const sourceKind = kinds.get(file.relativePath) ?? kinds.get(file.relativePath.replace(/^knowledge\//, "")) ?? null;
+    for (const block of readBlocks(file.text)) blocks.push({ ...block, file: file.relativePath, sourceKind });
     // Provenance is established by the ledger's own record of where the text went,
     // not by comparing a raw-file digest with a normalised-text digest: those are
     // two different files and the comparison can never hold. The raw digest is
@@ -588,6 +626,25 @@ function readCorpus(personRoot) {
       bytes: file.bytes,
     })),
   };
+}
+
+/**
+ * Speakers the parser marked, counted once per unit.
+ * `stats.participant_count` and `voice.json` speakers both come from this list.
+ */
+export function participantsFromUnits(units) {
+  const counts = new Map();
+  const firstAnchorOfSpeaker = new Map();
+  for (const unit of units) {
+    for (const speaker of unit.speakers) {
+      counts.set(speaker, (counts.get(speaker) ?? 0) + 1);
+      if (!firstAnchorOfSpeaker.has(speaker)) firstAnchorOfSpeaker.set(speaker, unit.anchor);
+    }
+  }
+  const names = [...counts.keys()].sort(
+    (left, right) => counts.get(right) - counts.get(left) || (left < right ? -1 : 1),
+  );
+  return { names, counts, firstAnchorOfSpeaker };
 }
 
 // ---------------------------------------------------------------------------
@@ -635,17 +692,7 @@ export function deriveStats(corpus) {
     );
   }
 
-  const speakerCounts = new Map();
-  const firstAnchorOfSpeaker = new Map();
-  for (const unit of units) {
-    for (const speaker of unit.speakers) {
-      speakerCounts.set(speaker, (speakerCounts.get(speaker) ?? 0) + 1);
-      if (!firstAnchorOfSpeaker.has(speaker)) firstAnchorOfSpeaker.set(speaker, unit.anchor);
-    }
-  }
-  const participants = [...speakerCounts.keys()].sort(
-    (left, right) => speakerCounts.get(right) - speakerCounts.get(left) || (left < right ? -1 : 1),
-  );
+  const { names: participants, firstAnchorOfSpeaker } = participantsFromUnits(units);
   if (participants.length >= MIN_UNITS.participants) {
     claims.push(
       makeClaim(
@@ -843,7 +890,65 @@ export function deriveDocuments(corpus) {
     };
     for (const line of result.notes) notes.push({ kind, line });
   }
+  alignVoiceSpeakers(documents.voice, corpus.units);
   return { documents, notes };
+}
+
+/** Voice speakers are the participant list. Missing names are measured on their own turns. */
+function alignVoiceSpeakers(voice, units) {
+  const claim = voice?.claims?.find((item) => item.id === "voice.sentence_length");
+  const bySpeaker = claim?.value?.by_speaker;
+  if (!bySpeaker) return;
+  const { names } = participantsFromUnits(units);
+  for (const key of Object.keys(bySpeaker)) {
+    if (!names.includes(key)) delete bySpeaker[key];
+  }
+  for (const name of names) {
+    if (bySpeaker[name]) continue;
+    const measured = sentenceStatsForSpeaker(units, name);
+    if (measured) bySpeaker[name] = measured;
+  }
+  const speakerCount = Object.keys(bySpeaker).length;
+  claim.value.pooled = speakerCount > 1;
+  claim.value.mixes_speakers = speakerCount > 1;
+}
+
+function sentenceStatsForSpeaker(units, name) {
+  const values = [];
+  const anchors = [];
+  for (const unit of units) {
+    for (const turn of unit.turns ?? []) {
+      if (turn.speaker !== name) continue;
+      const lengths = sentenceLengths(turn.text);
+      if (lengths.length === 0) continue;
+      values.push(...lengths);
+      anchors.push(unit.anchor);
+    }
+  }
+  if (values.length === 0) return null;
+  const sorted = values.slice().sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+  const p90Index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * 0.9) - 1));
+  const round4 = (value) => Math.round(value * 10000) / 10000;
+  return {
+    samples: values.length,
+    mean: round4(values.reduce((total, value) => total + value, 0) / values.length),
+    median: round4(median),
+    p90: round4(sorted[p90Index]),
+    min: sorted[0],
+    max: sorted[sorted.length - 1],
+    anchors: [...new Set(anchors)].sort(),
+  };
+}
+
+function sentenceLengths(text) {
+  return String(text ?? "")
+    .split(/[。！？!?…]+/)
+    .map((piece) => piece.trim())
+    .filter((piece) => piece !== "")
+    .map((piece) => [...piece].filter((char) => !/\s/.test(char)).length)
+    .filter((value) => value > 0);
 }
 
 // ---------------------------------------------------------------------------

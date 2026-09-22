@@ -15,7 +15,6 @@ R16 SKILL.md's simplest flow — one subtitle plus one `note` — keeps the note
 R17 harvesting the same directory twice leaves ledger, text files and derived output unchanged
 R21 identity.json: a handle claimed twice exits 2 with the exact message and writes nothing
 R21 identity.json with a person that lists no handles is a warning, not a crash
-R28 a document's labels (根因：/ 时间线：) are not counted as participants in a multi-source person
 R24 Step 1.5: `doctor --require-shape` run after Collect and before Derive fails the C-SPAN floor corpus
 R49 doctor fails when views/<slug>.view.json cites an anchor the ledger does not declare
 R48 doctor reports the channels this machine cannot collect from and the computer-use share
