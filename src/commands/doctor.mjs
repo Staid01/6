@@ -166,6 +166,88 @@ function resolvedAnchors(skillDir) {
 }
 
 /**
+ * Split normalised text into the same blocks the parser wrote: a `[k00NN]` line
+ * starts a unit, and wrap-continuations join it. Step 1.5 has no `voice.json` yet.
+ */
+const TEXT_ANCHOR_BRACKETS = /\[(k\d{4,}(?::t\d+)?)\]/g;
+const TEXT_ANCHOR_LEADING = /^(k\d{4,}(?::t\d+)?)\b/;
+const TEXT_TIMESTAMP = /^\s*(\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?)\s*/;
+const TEXT_TIMECODE = /^\s*(\d{1,3}:\d{2}:\d{2}(?:[.,]\d{1,3})?)\s*/;
+const TEXT_SPEAKER = /^([^\d：:\n][^：:\n]{0,23})[：:]\s*/;
+const TEXT_SENTENCE = /[。！？!?…]+/;
+
+function textBlocks(text) {
+  const blocks = [];
+  for (const line of String(text).split(/\r?\n/)) {
+    const anchors = [...line.matchAll(TEXT_ANCHOR_BRACKETS)].map((match) => match[1]);
+    if (anchors.length === 0) {
+      const leading = TEXT_ANCHOR_LEADING.exec(line);
+      if (leading) anchors.push(leading[1]);
+    }
+    if (anchors.length > 0) blocks.push(line);
+    else if (line.trim() !== "" && blocks.length > 0) blocks[blocks.length - 1] += ` ${line.trim()}`;
+  }
+  return blocks;
+}
+
+/** `[k00NN] <at> <speaker>：` → speaker plus the remaining sentence text. */
+function speakerPrefix(line) {
+  let rest = line.replace(TEXT_ANCHOR_BRACKETS, " ").replace(TEXT_ANCHOR_LEADING, " ");
+  const stamp = TEXT_TIMESTAMP.exec(rest);
+  if (stamp) rest = rest.slice(stamp[0].length);
+  const timecode = TEXT_TIMECODE.exec(rest);
+  if (timecode) rest = rest.slice(timecode[0].length);
+  const prefix = TEXT_SPEAKER.exec(rest);
+  if (!prefix) return { speaker: null, text: rest.replace(/\s+/g, " ").trim() };
+  return { speaker: prefix[1].trim(), text: rest.slice(prefix[0].length).replace(/\s+/g, " ").trim() };
+}
+
+function sentenceSamples(text) {
+  return String(text ?? "")
+    .split(TEXT_SENTENCE)
+    .map((piece) => piece.trim())
+    .filter((piece) => piece !== "")
+    .map((piece) => [...piece].filter((char) => !/\s/.test(char)).length)
+    .filter((count) => count > 0).length;
+}
+
+function speakersFromText(skillDir) {
+  const textDir = join(skillDir, "knowledge", "text");
+  const bySpeaker = {};
+  if (!existsSync(textDir)) return bySpeaker;
+  for (const name of readdirSync(textDir).sort()) {
+    if (!name.endsWith(".md")) continue;
+    let body = "";
+    try {
+      body = readFileSync(join(textDir, name), "utf8");
+    } catch {
+      continue;
+    }
+    for (const block of textBlocks(body)) {
+      const { speaker, text } = speakerPrefix(block);
+      if (!speaker) continue;
+      const samples = sentenceSamples(text);
+      if (samples === 0) continue;
+      bySpeaker[speaker] = { samples: (bySpeaker[speaker]?.samples ?? 0) + samples };
+    }
+  }
+  return bySpeaker;
+}
+
+function voiceBySpeaker(skillDir) {
+  const voicePath = join(skillDir, "evidence", "derived", "voice.json");
+  if (!existsSync(voicePath)) return null;
+  try {
+    const voice = JSON.parse(readFileSync(voicePath, "utf8"));
+    const claim = (voice.claims ?? []).find((item) => item?.id === "voice.sentence_length");
+    const bySpeaker = claim?.value?.by_speaker ?? null;
+    return bySpeaker && typeof bySpeaker === "object" ? bySpeaker : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * A pre-flight read on the **corpus shape**: is this material able to carry a
  * person at all?
  *
@@ -173,12 +255,12 @@ function resolvedAnchors(skillDir) {
  * hypothetical — a 47-minute multi-speaker floor proceeding was run through the whole
  * five-step mainline, producing a portrait of a room instead of a person, because the
  * only judge of "is this the right material" was the model's own judgement at the end.
- * The numbers here come from what `retrospect` already derived, so this is a reading,
- * not a second derivation:
+ * Speakers come from parser prefixes in `knowledge/text/*.md`. `voice.json` is only a
+ * cross-check: it is written at Derive, after this gate is supposed to have run.
  *
  *  - `units`     anchors the ledger records (how much material there is);
- *  - `speakers`  distinct speakers the voice derivation could attribute units to;
- *  - `top_share` the busiest speaker's share of the attributed units.
+ *  - `speakers`  distinct speaker prefixes on those text units;
+ *  - `top_share` the busiest speaker's share of the attributed samples.
  *
  * Verdict rules, deliberately blunt and stated in the receipt:
  *  - fewer than 20 citable units → FAIL (nothing to be a person *from*);
@@ -190,22 +272,25 @@ function resolvedAnchors(skillDir) {
 function corpusShape(skillDir, ledger) {
   const reasons = [];
   const notes = [];
+  const warnings = [];
   const units = ledger.anchors;
-  const voicePath = join(skillDir, "evidence", "derived", "voice.json");
-  let bySpeaker = null;
-  if (existsSync(voicePath)) {
-    try {
-      const voice = JSON.parse(readFileSync(voicePath, "utf8"));
-      const claim = (voice.claims ?? []).find((item) => item?.id === "voice.sentence_length");
-      bySpeaker = claim?.value?.by_speaker ?? null;
-    } catch {
-      bySpeaker = null;
+  const bySpeaker = speakersFromText(skillDir);
+  const fromVoice = voiceBySpeaker(skillDir);
+  if (fromVoice) {
+    const voiceNames = Object.keys(fromVoice).sort();
+    const textNames = Object.keys(bySpeaker).sort();
+    const voiceAttributed = Object.values(fromVoice).reduce((total, item) => total + (item?.samples ?? 0), 0);
+    const textAttributed = Object.values(bySpeaker).reduce((total, item) => total + (item?.samples ?? 0), 0);
+    if (voiceNames.join("\n") !== textNames.join("\n") || voiceAttributed !== textAttributed) {
+      warnings.push(
+        `knowledge/text speakers=${textNames.length} attributed=${textAttributed} disagrees with evidence/derived/voice.json speakers=${voiceNames.length} attributed=${voiceAttributed}; shape uses the text`,
+      );
     }
   }
-  const speakers = bySpeaker ? Object.keys(bySpeaker) : [];
-  const attributed = bySpeaker ? Object.values(bySpeaker).reduce((total, item) => total + (item?.samples ?? 0), 0) : 0;
-  const top = bySpeaker
-    ? Object.entries(bySpeaker).sort(([, a], [, b]) => (b?.samples ?? 0) - (a?.samples ?? 0))[0]
+  const speakers = Object.keys(bySpeaker);
+  const attributed = Object.values(bySpeaker).reduce((total, item) => total + (item?.samples ?? 0), 0);
+  const top = speakers.length
+    ? Object.entries(bySpeaker).sort((a, b) => (b[1]?.samples ?? 0) - (a[1]?.samples ?? 0) || (a[0] < b[0] ? -1 : 1))[0]
     : null;
   const topShare = top && attributed > 0 ? (top[1]?.samples ?? 0) / attributed : null;
 
@@ -237,6 +322,7 @@ function corpusShape(skillDir, ledger) {
     verdict: reasons.length === 0 ? "PASS" : "FAIL",
     reasons,
     notes,
+    warnings,
   };
 }
 
@@ -326,7 +412,12 @@ register("doctor", {
           const personDir = join(baseDir, entry);
           const ledgerPath = join(personDir, "knowledge", "index.json");
           if (!existsSync(ledgerPath)) continue;
-          shapes.push({ slug: `${family}/${entry}`, ...corpusShape(personDir, readLedger(personDir)) });
+          const shaped = corpusShape(personDir, readLedger(personDir));
+          const { warnings: shapeWarnings = [], ...shape } = shaped;
+          for (const line of shapeWarnings) {
+            if (!warnings.includes(line)) warnings.push(line);
+          }
+          shapes.push({ slug: `${family}/${entry}`, ...shape });
         }
       }
       const skills = listSkills(baseDir);
