@@ -707,9 +707,12 @@ export async function collect(options = {}) {
 export const HELP = `distilly collect feishu — 飞书消息采集（只读）/ Feishu message collection (read-only)
 
 用法 (zh):
+  distilly collect feishu --mode <api|browser|mcp>
   distilly collect feishu --chat-id <oc_…> [--person <slug>] [--root <dir>]
                           [--limit 50] [--max-pages 10] [--max-retries 4]
                           [--since <page_token>] [--no-resume] [--json]
+  distilly collect feishu --mode browser [--consent <token>]
+  distilly collect feishu --mode mcp [--url <doc|wiki|sheet>]
 
 凭据：~/.distilly/${CONFIG_FILE}（app_id / app_secret，0600）或环境变量
       DISTILLY_FEISHU_APP_ID / DISTILLY_FEISHU_APP_SECRET。
@@ -719,7 +722,10 @@ export const HELP = `distilly collect feishu — 飞书消息采集（只读）/
 
 ---
 ## English
+  distilly collect feishu --mode <api|browser|mcp>
   distilly collect feishu --chat-id <oc_…> [--person <slug>] [--limit N] [--json]
+  distilly collect feishu --mode browser [--consent <token>]
+  distilly collect feishu --mode mcp [--url <doc|wiki|sheet>]
 
 Credentials: ~/.distilly/${CONFIG_FILE} or DISTILLY_FEISHU_APP_ID / DISTILLY_FEISHU_APP_SECRET.
 Raw pages land verbatim in knowledge/raw/feishu/ and are registered in knowledge/index.json.
@@ -766,6 +772,82 @@ export async function runCollectCli(argv, io = {}) {
   if (flags.help) {
     out(HELP);
     return 0;
+  }
+
+  const feishuModes = ["api", "browser", "mcp"];
+  if (flags.mode !== undefined && !feishuModes.includes(flags.mode)) {
+    const receipt = {
+      command: "collect",
+      channel: CHANNEL,
+      mode: flags.mode,
+      ok: false,
+      inputs: [],
+      outputs: [],
+      anchors: { total: 0, cited: 0 },
+      warnings: [],
+      unavailable: [],
+      credential_file: CONFIG_FILE,
+      errors: [`unsupported --mode: ${flags.mode}`],
+      error: {
+        code: "collect/usage",
+        message: `unsupported --mode: ${flags.mode}`,
+        remedy: `legal --mode values: ${feishuModes.join(", ")}`,
+      },
+    };
+    if (flags.json) out(JSON.stringify(receipt, null, 2));
+    else err(`Error: ${receipt.error.message}\n${receipt.error.remedy}`);
+    return { ok: false, exitCode: 2, receipt };
+  }
+
+  if (flags.mode === "browser") {
+    const { collectBrowser } = await import("./feishu-browser.mjs");
+    const result = collectBrowser({
+      env: io.env ?? process.env,
+      root: flags.root ?? flags["base-dir"] ?? process.cwd(),
+      person: flags.person,
+      family: flags.family,
+      consentToken: flags.consent,
+      capturePath: flags.capture,
+      url: flags.url,
+      label: flags.label,
+    });
+    if (!flags.json) {
+      const status = result.receipt.status;
+      if (status === "waiting-for-user-consent") {
+        err(`collect feishu (browser): ${result.receipt.errors?.[0] ?? "waiting for user consent"}`);
+        for (const item of result.receipt.unavailable ?? []) for (const step of item.remediation ?? []) err(`  ${step}`);
+      } else if (status === "awaiting-host-capture") {
+        out("collect feishu (browser): waiting for the host capture");
+        for (const step of result.receipt.plan?.steps ?? []) out(`  ${step}`);
+      } else if (result.ok) {
+        out(`collect feishu (browser): ${result.receipt.anchors?.total ?? 0} anchor(s)`);
+      } else {
+        err(`Error: ${result.receipt.errors?.[0] ?? "collect failed"}`);
+      }
+    }
+    return result;
+  }
+
+  if (flags.mode === "mcp") {
+    const mcp = await import("./feishu-mcp.mjs");
+    const hasTarget = Boolean(flags.url || flags["chat-id"]);
+    if (!hasTarget) {
+      let missingCredential = false;
+      try {
+        loadCredential({ env: io.env ?? process.env });
+      } catch {
+        missingCredential = true;
+      }
+      if (missingCredential) {
+        // parseMcpArgs names --chat-id, then --person, before it loads a credential.
+        // A run with no credential must report the MCP config file instead.
+        const probe = [...argv];
+        if (!flags.url && !flags["chat-id"]) probe.push("--url", "https://open.feishu.cn/docx/mcp-endpoint");
+        if (!flags.person) probe.push("--person", "mcp-endpoint");
+        return mcp.runCollectCli(probe, io);
+      }
+    }
+    return mcp.runCollectCli(argv, io);
   }
 
   const result = await collect({

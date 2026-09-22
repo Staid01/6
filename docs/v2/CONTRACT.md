@@ -22,7 +22,7 @@ parse-subtitle <x.srt|.vtt>
 parse-doc <x.docx|xlsx|pdf>
 parse-archive <x.zip|dir>     X 官方归档 / Takeout / Discord / Telegram / Instagram / Facebook / LinkedIn
 retrospect                    纯派生 → evidence/derived/*.json（跑两次字节相同）
-collect <feishu|slack|dingtalk|x|discord|reddit|notion|gmail>   要 key / OAuth
+collect <feishu|slack|dingtalk|x>   要 key / OAuth
 collect x --mode browser --consent <token>                      computer use（无 token → exit 2）
 transcribe <audio|video>      可选后端（OpenAI 兼容 HTTP 或宿主能力）
 note --from <file|->          把 LLM 自己读到的内容登记进账本（method:"model-read"）
@@ -32,6 +32,8 @@ doctor                        证据覆盖率 / 不可用渠道 / 锚点回指�
 skill <create|update|list|version>
 install <host> | uninstall
 ```
+
+collect feishu --mode <api|browser|mcp>
 
 迁移期兼容：旧的 `python3 tools/xxx.py` 调用由 `bin/distilly.mjs` 转发并打印 deprecation 警告（PR① 内实现，PR③ 删除）。
 

@@ -79,7 +79,7 @@ Grok Bot 可以把流程保存为 private Skill，但目前没有官方的本地
 | 解析文档 | `distilly parse-doc <x.docx\|xlsx\|pdf>` |
 | 解析归档（X 官方归档 / Takeout / 社交平台导出） | `distilly parse-archive <x.zip\|dir>` |
 | 纯派生 → `evidence/derived/*.json` | `distilly retrospect` |
-| 需要 key / OAuth 的渠道采集 | `distilly collect <feishu\|slack\|dingtalk\|x\|discord\|reddit\|notion\|gmail>` |
+| 需要 key / OAuth 的渠道采集 | `distilly collect <feishu\|slack\|dingtalk\|x>` |
 | 浏览器 computer use（必须带同意 token） | `distilly collect x --mode browser --consent <token>` |
 | 音视频转写（可选后端） | `distilly transcribe <audio\|video>` |
 | 把 LLM 自己读到的内容登记进账本 | `distilly note --from <file\|->` |
@@ -101,7 +101,7 @@ Grok Bot 可以把流程保存为 private Skill，但目前没有官方的本地
 | `tools/feishu_parser.py`（deprecated） | `distilly parse-chat` |
 | `tools/feishu_auto_collector.py`（deprecated） | `distilly collect feishu` |
 | `tools/feishu_browser.py`（deprecated） | `distilly collect feishu --mode browser --consent <token>` |
-| `tools/feishu_mcp_client.py`（deprecated） | `distilly collect feishu` |
+| `tools/feishu_mcp_client.py`（deprecated） | `distilly collect feishu --mode mcp` |
 | `tools/dingtalk_auto_collector.py`（deprecated） | `distilly collect dingtalk` |
 | `tools/email_parser.py`（deprecated） | `distilly parse-email` |
 | `tools/research/xquik_public_posts.py`（deprecated） | `distilly collect x` |
@@ -158,7 +158,7 @@ skills/<family>/<slug>/
 
 1. 先读 `prompts/collectors.md`，按"什么时候用哪条命令"选路。
 2. 零凭据来源（本地文件、导出包、字幕、文档、归档）直接走 `distilly harvest`、`distilly parse-chat`、`distilly parse-email`、`distilly parse-subtitle`、`distilly parse-doc`、`distilly parse-archive`。
-3. 需要 key / OAuth 的渠道（飞书、Slack、钉钉、X、Discord、Reddit、Notion、Gmail）先征求用户同意，再走 `distilly collect <channel>`；同意范围用 `distilly consent <grant|list|revoke>` 管理。
+3. 需要 key / OAuth 的渠道（飞书、Slack、钉钉、X）先征求用户同意，再走 `distilly collect <channel>`；同意范围用 `distilly consent <grant|list|revoke>` 管理。
 4. 浏览器 computer use 必须按 `prompts/computer-use.md` 执行：先问再动、只读白名单、默认 ≤20 屏 / ≤10 分钟 / 每分钟 ≤6 次滚动、每屏落盘原文 + URL + 时间 + 截图（截图只放本地）、可中断；`distilly collect x --mode browser --consent <token>` 没有 token 就直接退出，不要绕过。
 5. 用户只能"贴文字/截图"时，用 `distilly note --from <file|->` 登记来源（`method:"model-read"`），不要假装它是采集来的。
 6. 音视频先 `distilly transcribe`，再解析字幕；不要把整段 transcript 抄进仓库。
@@ -429,7 +429,7 @@ Every collection, derivation, and render step goes through `distilly`. Command n
 | Parse documents | `distilly parse-doc <x.docx\|xlsx\|pdf>` |
 | Parse archives (X archive / Takeout / social exports) | `distilly parse-archive <x.zip\|dir>` |
 | Pure derivation → `evidence/derived/*.json` | `distilly retrospect` |
-| Collection on channels needing key / OAuth | `distilly collect <feishu\|slack\|dingtalk\|x\|discord\|reddit\|notion\|gmail>` |
+| Collection on channels needing key / OAuth | `distilly collect <feishu\|slack\|dingtalk\|x>` |
 | Browser computer use (consent token required) | `distilly collect x --mode browser --consent <token>` |
 | Audio/video transcription (optional backend) | `distilly transcribe <audio\|video>` |
 | Register what the model itself read | `distilly note --from <file\|->` |
@@ -451,7 +451,7 @@ Every collection, derivation, and render step goes through `distilly`. Command n
 | `tools/feishu_parser.py` (deprecated) | `distilly parse-chat` |
 | `tools/feishu_auto_collector.py` (deprecated) | `distilly collect feishu` |
 | `tools/feishu_browser.py` (deprecated) | `distilly collect feishu --mode browser --consent <token>` |
-| `tools/feishu_mcp_client.py` (deprecated) | `distilly collect feishu` |
+| `tools/feishu_mcp_client.py` (deprecated) | `distilly collect feishu --mode mcp` |
 | `tools/dingtalk_auto_collector.py` (deprecated) | `distilly collect dingtalk` |
 | `tools/email_parser.py` (deprecated) | `distilly parse-email` |
 | `tools/research/xquik_public_posts.py` (deprecated) | `distilly collect x` |
@@ -508,7 +508,7 @@ No step may degrade silently: either fix it, or state the failure in the user-fa
 
 1. Read `prompts/collectors.md` first and pick the route from its "which command when" table.
 2. Zero-credential sources (local files, export bundles, subtitles, documents, archives) go straight to `distilly harvest`, `distilly parse-chat`, `distilly parse-email`, `distilly parse-subtitle`, `distilly parse-doc`, `distilly parse-archive`.
-3. Channels needing a key or OAuth (Feishu, Slack, DingTalk, X, Discord, Reddit, Notion, Gmail) require the user's consent first, then `distilly collect <channel>`; manage consent scope with `distilly consent <grant|list|revoke>`.
+3. Channels needing a key or OAuth (Feishu, Slack, DingTalk, X) require the user's consent first, then `distilly collect <channel>`; manage consent scope with `distilly consent <grant|list|revoke>`.
 4. Browser computer use must follow `prompts/computer-use.md`: ask before acting, read-only whitelist, default ≤20 screens / ≤10 minutes / ≤6 scrolls per minute, every screen persisted with raw text + URL + timestamp + screenshot (screenshots stay local), interruptible; `distilly collect x --mode browser --consent <token>` must exit without a token — never work around it.
 5. When the user can only paste text or screenshots, register the source with `distilly note --from <file|->` (`method:"model-read"`); never pretend it was collected.
 6. Transcribe audio/video with `distilly transcribe` before parsing subtitles; never commit a full transcript to the repository.

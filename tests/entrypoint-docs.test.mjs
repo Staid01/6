@@ -40,16 +40,15 @@ test("Codex keeps its documented discovery directory", () => {
 });
 
 test("the collectors keep reading the private config paths, not the repo", () => {
-  // v2 retired `tools/*.py`, so the pre-port version of this test read files that
-  // no longer exist. The discipline it protected is unchanged and now lives in
-  // `src/collect/kit.mjs`, so it is asserted there instead of being dropped.
-  const kit = read(join("src", "collect", "kit.mjs"));
-  assert.match(kit, /join\(homedir\(\), "\.distilly"\)/, "primary credentials live under ~/.distilly");
-  assert.match(kit, /"\.colleague-skill"/, "the pre-rename location stays readable");
+  // v2 retired `tools/*.py`. The credential-path discipline now lives in
+  // `src/collect/feishu.mjs` (kit.mjs left with the removed channels).
+  const feishu = read(join("src", "collect", "feishu.mjs"));
+  assert.match(feishu, /join\(homedir\(\), "\.distilly"\)/, "primary credentials live under ~/.distilly");
+  assert.match(feishu, /"\.colleague-skill"/, "the pre-rename location stays readable");
 
   // Every credentialed channel names its config file; none may read a key from
   // the working tree.
-  for (const name of ["feishu", "dingtalk", "slack", "x", "discord", "gmail", "notion", "reddit"]) {
+  for (const name of ["feishu", "dingtalk", "slack", "x"]) {
     const source = read(join("src", "collect", `${name}.mjs`));
     assert.match(source, /export const CONFIG_FILE = "[a-z]+_config\.json";/, name);
   }
