@@ -12,7 +12,7 @@ export const PENDING_CHANNELS = {};
 
 import { register } from "./index.mjs";
 
-const CHANNELS = {
+export const CHANNELS = {
   feishu: () => import("../collect/feishu.mjs"),
   slack: () => import("../collect/slack.mjs"),
   dingtalk: () => import("../collect/dingtalk.mjs"),

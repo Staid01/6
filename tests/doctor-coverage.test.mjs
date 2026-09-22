@@ -243,3 +243,56 @@ test("too little material fails the shape check before quality is even discussed
     rmSync(corpus, { recursive: true, force: true });
   }
 });
+
+test("doctor lists every CHANNELS channel this machine has no credential file for", () => {
+  const home = mkdtempSync(join(tmpdir(), "dst-doctor-cred-"));
+  const distillyHome = join(home, ".distilly");
+  mkdirSync(distillyHome, { recursive: true });
+  try {
+    const run = runCli(["doctor", "--json"], { env: { HOME: home, DISTILLY_HOME: distillyHome } });
+    assert.equal(run.status, 0, run.stderr);
+    const receipt = parseReceipt(run.stdout);
+    assert.deepEqual(
+      receipt.unavailable.map((item) => item.channel),
+      ["feishu", "slack", "dingtalk", "x"],
+    );
+    for (const item of receipt.unavailable) {
+      assert.deepEqual(Object.keys(item).sort(), ["channel", "reason"]);
+      assert.match(item.reason, new RegExp(`${item.channel}_config\\.json`));
+      assert.match(item.reason, /^no credential at /);
+    }
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor reports model-read entries and a computer-use share whose four buckets sum to 1", () => {
+  const base = mkdtempSync(join(tmpdir(), "dst-doctor-prov-"));
+  const home = mkdtempSync(join(tmpdir(), "dst-doctor-prov-home-"));
+  const distillyHome = join(home, ".distilly");
+  mkdirSync(distillyHome, { recursive: true });
+  const env = { HOME: home, DISTILLY_HOME: distillyHome };
+  try {
+    const harvested = runCli(["harvest", INTERVIEW_CORPUS, "--person", "lin-gong", "--base-dir", base, "--json"], { env });
+    assert.equal(harvested.status, 0, harvested.stderr);
+    const noteFile = join(base, "model-note.txt");
+    writeFileSync(noteFile, "模型读到的一段话，登记进账本。\n", "utf8");
+    const noted = runCli(["note", "--from", noteFile, "--person", "lin-gong", "--base-dir", base, "--json"], { env });
+    assert.equal(noted.status, 0, noted.stderr);
+    const run = runCli(["doctor", "--base-dir", base, "--json"], { env });
+    assert.equal(run.status, 0, run.stderr);
+    const receipt = parseReceipt(run.stdout);
+    assert.equal(receipt.provenance["model-read"].entries, 1);
+    assert.ok(receipt.provenance.file.entries >= 1);
+    const shareSum =
+      receipt.provenance["model-read"].share +
+      receipt.provenance.browser.share +
+      receipt.provenance.api.share +
+      receipt.provenance.file.share;
+    assert.equal(shareSum, 1);
+    assert.match(JSON.stringify(receipt), /computer[-_ ]?use/i);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
