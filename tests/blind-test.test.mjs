@@ -10,7 +10,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
@@ -189,5 +189,32 @@ describe("blind-test prepare", () => {
     const sheet = JSON.parse(readFileSync(join(out, "scores.template.json"), "utf8"));
     assert.equal(sheet.control.length, 10);
     assert.equal(sheet.evidence.length, 10, "both arms share one sheet so they cannot diverge");
+  });
+
+  it("accepts the relative --out and --a the handoff (§8) uses", () => {
+    const dir = scratch("blind-rel");
+    const splitResult = run("split-corpus.mjs", ["--in", FIXTURE, "--out", "split", "--ratio", "0.7"], { cwd: dir });
+    assert.equal(splitResult.status, 0, splitResult.stderr || splitResult.stdout);
+
+    const prepare = run(
+      "blind-test.mjs",
+      ["prepare", "--a", "split/A.srt", "--person", "lin-gong", "--out", "run"],
+      { cwd: dir },
+    );
+    assert.equal(prepare.status, 0, prepare.stderr || prepare.stdout);
+    assert.equal(existsSync(join(dir, "run", "profile.html")), true);
+
+    const finalize = run("blind-test.mjs", ["finalize", "--out", "run", "--view", "run/view.baseline.json"], { cwd: dir });
+    assert.equal(finalize.status, 0, finalize.stderr || finalize.stdout);
+
+    const control = run("blind-test.mjs", ["control", "--a", "split/A.srt", "--out", "control"], { cwd: dir });
+    assert.equal(control.status, 0, control.stderr || control.stdout);
+    assert.equal(existsSync(join(dir, "control", "control-prompt.md")), true);
+
+    const score = run("blind-test.mjs", ["score", "--scores", "run/scores.template.json", "--out", "report.md"], {
+      cwd: dir,
+    });
+    assert.equal(score.status, 0, score.stderr || score.stdout);
+    assert.match(readFileSync(join(dir, "report.md"), "utf8"), /evidence → FAIL/);
   });
 });

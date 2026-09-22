@@ -56,6 +56,11 @@ function arg(name, fallback) {
 }
 const flag = (name) => process.argv.includes(`--${name}`);
 
+/** Resolve a user path once so spawn cwd cannot reinterpret --out/--a/--base-dir. */
+function abs(value) {
+  return resolve(process.cwd(), value);
+}
+
 const sha256 = (text) => createHash("sha256").update(text, "utf8").digest("hex");
 const round = (value) => (Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0$/, ""));
 
@@ -304,19 +309,21 @@ function writeSheet(out) {
 }
 
 function prepare() {
-  const a = arg("a");
+  const aArg = arg("a");
   const person = arg("person");
-  const out = arg("out");
-  if (!a || !person || !out) {
+  const outArg = arg("out");
+  if (!aArg || !person || !outArg) {
     console.error("usage: node scripts/blind-test.mjs prepare --a <A.srt> --person <slug> --out <dir> [--skeleton-only]");
     process.exit(2);
   }
+  const a = abs(aArg);
+  const out = abs(outArg);
   const work = join(out, "work");
   rmSync(work, { recursive: true, force: true });
   mkdirSync(join(work, "corpus"), { recursive: true });
   cpSync(a, join(work, "corpus", basename(a)));
   distilly(["harvest", join(work, "corpus"), "--person", person, "--base-dir", work, "--json"], work);
-  const retro = distilly(["retrospect", "--person", person, "--json"], work);
+  const retro = distilly(["retrospect", "--person", person, "--base-dir", work, "--json"], work);
 
   const personDir = join(work, "skills", "colleague", person);
   const derivation = loadDerivation(personDir);
@@ -413,10 +420,18 @@ function countRenderedAnchors(html) {
 }
 
 function finalizeView({ out, viewPath, slug, personDir, receipt, source }) {
-  const checked = distilly(["view", "check", "--file", viewPath, "--json"], personDir, { tolerate: true });
-  const rendered = distilly(["view", "render", "--file", viewPath, "--out", join(out, "profile.html"), "--json"], personDir, {
-    tolerate: true,
-  });
+  const work = join(out, "work");
+  const htmlPath = join(out, "profile.html");
+  const checked = distilly(
+    ["view", "check", "--file", viewPath, "--person", slug, "--base-dir", work, "--json"],
+    personDir,
+    { tolerate: true },
+  );
+  const rendered = distilly(
+    ["view", "render", "--file", viewPath, "--out", htmlPath, "--person", slug, "--base-dir", work, "--json"],
+    personDir,
+    { tolerate: true },
+  );
   const diagnostics = [];
   for (const entry of checked.receipt?.diagnostics ?? []) diagnostics.push(`${entry.code}: ${entry.message}`);
   const html = readFileSync(join(out, "profile.html"), "utf8");
@@ -438,17 +453,19 @@ function finalizeView({ out, viewPath, slug, personDir, receipt, source }) {
 }
 
 function finalize() {
-  const out = arg("out");
-  const view = arg("view");
-  if (!out || !view) {
+  const outArg = arg("out");
+  const viewArg = arg("view");
+  if (!outArg || !viewArg) {
     console.error("usage: node scripts/blind-test.mjs finalize --out <dir> --view <view.json> [--strict]");
     process.exit(2);
   }
+  const out = abs(outArg);
+  const view = abs(viewArg);
   const receiptPath = join(out, "receipt.json");
   const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
   const person = receipt.view?.slug ?? JSON.parse(readFileSync(view, "utf8")).meta?.slug;
   const personDir = join(out, "work", "skills", "colleague", person);
-  const result = finalizeView({ out, viewPath: resolve(view), slug: person, personDir, receipt, source: "authored" });
+  const result = finalizeView({ out, viewPath: view, slug: person, personDir, receipt, source: "authored" });
   Object.assign(receipt, result, { view_source: "authored", next_steps: receipt.next_steps });
   writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, "utf8");
   console.log(`finalized ${out}/profile.html (${result.html.bytes} bytes, check ok: ${result.check.ok}, external links: ${result.external_links})`);
@@ -469,12 +486,14 @@ const CONTROL_PROMPT = (source) => `# 对照任务（裸 prompt，无证据层�
 `;
 
 function control() {
-  const a = arg("a");
-  const out = arg("out");
-  if (!a || !out) {
+  const aArg = arg("a");
+  const outArg = arg("out");
+  if (!aArg || !outArg) {
     console.error("usage: node scripts/blind-test.mjs control --a <A.srt> --out <dir>");
     process.exit(2);
   }
+  const a = abs(aArg);
+  const out = abs(outArg);
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, "control-prompt.md"), CONTROL_PROMPT(basename(a)) + readFileSync(a, "utf8"), "utf8");
   writeSheet(out);
@@ -525,11 +544,12 @@ export function verdictFor(metrics) {
 }
 
 function score() {
-  const scoresPath = arg("scores");
-  if (!scoresPath) {
+  const scoresArg = arg("scores");
+  if (!scoresArg) {
     console.error("usage: node scripts/blind-test.mjs score --scores <scores.json> [--out report.md]");
     process.exit(2);
   }
+  const scoresPath = abs(scoresArg);
   const scores = JSON.parse(readFileSync(scoresPath, "utf8"));
   const arms = ["evidence", "control"].filter((arm) => Array.isArray(scores[arm]));
   if (arms.length === 0) throw new Error("scores.json needs an `evidence` and/or `control` array");
@@ -560,8 +580,9 @@ function score() {
   }
 
   const report = lines.join("\n") + "\n";
-  const out = arg("out");
-  if (out) {
+  const outArg = arg("out");
+  if (outArg) {
+    const out = abs(outArg);
     writeFileSync(out, report, "utf8");
     console.log(`report → ${out}`);
   }
