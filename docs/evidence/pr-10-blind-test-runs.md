@@ -1,3 +1,5 @@
+> 描述的是按会话转录重建的 `ds/NN-*` 分支快照，不是本栈。
+
 # PR-10 · 效果层盲测：实跑两轮的结果与结论
 
 - 目标：按 `docs/v2/ACCEPTANCE.md` 的 A/B holdout 真跑一次"证据层 vs 裸 prompt"，

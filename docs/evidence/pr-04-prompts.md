@@ -1,3 +1,5 @@
+> 描述的是按会话转录重建的 `ds/NN-*` 分支快照，不是本栈。
+
 # PR-04 · 提示词层（`ds/04-prompts`）证据
 
 纯文字 PR，无 HTML 产物、无截图（`/tmp/dst-evidence/` 无文件）。命令名一律以 `docs/v2/CONTRACT.md` §1 的命令块为准。

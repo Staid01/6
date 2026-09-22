@@ -1,3 +1,5 @@
+> 描述的是按会话转录重建的 `ds/NN-*` 分支快照，不是本栈。
+
 # PR-17 · Reddit 与 Gmail：契约的采集渠道全部实现
 
 - 分支：`ds/17-reddit-gmail`（本地，已合并进 `dot-skill-test`）

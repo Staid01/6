@@ -1,3 +1,5 @@
+> 描述的是按会话转录重建的 `ds/NN-*` 分支快照，不是本栈。
+
 # PR-16 · Discord 与 Notion 两个采集渠道
 
 - 分支：`ds/16-discord-notion`（本地，已合并进 `dot-skill-test`）
@@ -8,7 +10,7 @@
 ## 1. 为什么
 
 `CONTRACT.md` §1 的采集命令行写着 8 个渠道，此前只实现 4 个（飞书/Slack/钉钉/X）。
-未实现的两个渠道此前回 `collect/planned-channel` 并写明所需凭据——诚实，但仍是缺口。
+未实现的两个渠道当时用 planned-channel 这类错误码回执并写明所需凭据。那是 ds/16 快照上的历史说明，不是本栈。
 这一轮把 Discord（bot token）与 Notion（内部集成 token）补上，`PENDING_CHANNELS`
 从 4 条缩到 2 条（reddit / gmail）。
 

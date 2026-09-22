@@ -1,15 +1,10 @@
 # Known entry-surface findings. Remove a line when its PR closes the gap. Never add one without a PR that explains it.
-commands: +skill migrate
 enumerations: -collect: discord
 enumerations: -collect: reddit
 enumerations: -collect: notion
 enumerations: -collect: gmail
-enumerations: +consent: verify
-enumerations: +consent: prune
-enumerations: -parse-doc: pdf
 channels: -collect discord: collect/unknown-channel
 channels: -collect reddit: collect/unknown-channel
 channels: -collect notion: collect/unknown-channel
 channels: -collect gmail: collect/unknown-channel
-error-codes: -collect/planned-channel documented but no source emits it
 error-codes: +collect/unknown-channel observed at runtime but documented nowhere

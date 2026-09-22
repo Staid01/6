@@ -1,3 +1,5 @@
+> 描述的是按会话转录重建的 `ds/NN-*` 分支快照，不是本栈。
+
 # PR-13 · 目标审计门禁
 
 - 分支：直接落在集成分支 `dot-skill-test`（本地）
@@ -44,7 +46,7 @@ node --test tests/audit-objective.test.mjs          # 2 条：全体满足 + 缺
 - `docs/evidence/pr-01-node-core.md`、`pr-02-parse-zero-cred.md`：最早两条分支缺证据文档，
   审计把它标成唯一未满足项后补写。
 - 契约里未移植的四个采集渠道（discord/reddit/notion/gmail）从"读起来像拼错"改成
-  `collect/planned-channel` + 逐条需求说明，`doctor` 多打一行 `Planned channels`。
+  当时用 planned-channel 这类错误码做缺口说明，并让 doctor 多打一行 Planned channels。那是 ds/13 快照上的历史行为，不是本栈。
 
 ## 6. 已知缺口
 

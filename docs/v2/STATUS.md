@@ -1,10 +1,11 @@
 # dot-skill v2 · 当前状态
 
 > 这份文件是**这一支的权威状态说明**：现在能做什么、怎么验、哪些还没做到。
-> 最后更新：2026-09-15（集成分支 `dot-skill-test`）。
+> 最后更新：2026-09-22（集成分支 `dot-skill-test`）。栈停在 `dot-skill-test`，`dot-skill` 保留。
 > 契约 `docs/v2/CONTRACT.md` · 验收 `docs/v2/ACCEPTANCE.md` · 渲染 `docs/v2/RENDER.md` ·
-> 提示词 `docs/v2/PROMPTS.md` · 宿主矩阵 `docs/v2/HOSTS.md` · 迁移 `docs/v2/MIGRATION.md`。
-> 各功能的交付说明与前后对比在 `docs/evidence/pr-NN-*.md`。
+> 提示词 `docs/v2/PROMPTS.md` · 宿主矩阵 `docs/v2/HOSTS.md` · 迁移 `docs/v2/MIGRATION.md` ·
+> 门禁 `docs/v2/GATES.md`。
+> 各功能的交付说明与前后对比在 `docs/evidence/pr-NN-*.md`。那些文件描述的是按会话转录重建的 `ds/NN-*` 分支快照，不是本栈。
 
 ## 1. 这是什么
 
@@ -52,29 +53,36 @@ node bin/distilly.mjs install deepseek-harness      # → $DSH_HOME/skills/disti
 用于直接指名更细的一层；`view` 另接受同义别名 `--root`。同时给 `--base-dir` 与
 `--skills-dir` 会报错，不会猜。
 
+本树 `doctor` 不接受 `--person`。空 HOME 探测必须同时把 `HOME` 和 `DISTILLY_HOME` 指到同一个空的 `mktemp -d`。
+
 ## 4. 怎么验（当前实测数字）
 
+下列数字来自 2026-09-22 在 `atomic/pr-10-contract-align` 上的重跑。Node 22.14.0 与 Node 20.20.2。不要抄计划里的 396。
+
 ```bash
-npm test                                   # CI 的同一条命令
+npm test                                   # Verify 里 unit-tests 门禁的同一条命令
 node scripts/acceptance.mjs --corpus tests/fixtures/public-corpus/synthetic-interview --person lin-gong
 node scripts/acceptance.mjs --corpus tests/fixtures/public-corpus/us-house-floor-2009-07-29 --person us-house
-DISTILLY_PLAYWRIGHT_ROOT=<含 node_modules 的目录> node scripts/audit-objective.mjs
+node scripts/acceptance.mjs --corpus tests/fixtures/public-corpus/synthetic-multisource --person lin-gong
+node scripts/audit-objective.mjs --skip-acceptance
 node scripts/check_release.mjs && node scripts/prompt-lint.mjs && node scripts/generate-template.mjs --check
+node scripts/run-gates.mjs --without playwright
+DISTILLY_PLAYWRIGHT_ROOT=/tmp/pw-root node scripts/run-gates.mjs --requires playwright
 ```
 
-| 门禁 | 结果 |
-| --- | --- |
-| `npm test` | 391 / 391（Node 20 与 22 各一遍） |
-| `scripts/acceptance.mjs` | **18 / 18**，两份公开语料各一遍 |
-| `scripts/audit-objective.mjs` | 15 / 15 条满足（本地要求工作树干净且已推送） |
-| `scripts/check_release.mjs` | 7 / 7 |
-| `scripts/prompt-lint.mjs` | 0 finding / 26 文件 |
-| `scripts/generate-template.mjs --check` | 无漂移 |
-| GitHub Actions | Node 20 / Node 22 / Acceptance 三个 job 全绿 |
-
-> 2026-09-15 补上的两道门禁：**语料体检**（`doctor --require-shape`：单元数、可归属比例、
-> 最活跃者占比，FAIL 必给理由——它拦住的正是"拿议会记录蒸出会议室的画像"那类错误）与
-> **引用判定**（`doctor` 现在把生成物里的引用一并计入，悬空引用 → `ok:false`、exit 1）。
+| 门禁 | 结果 | 来源命令 |
+| --- | --- | --- |
+| `npm test` | **397 / 397**，`# fail 0`（Node 20.20.2 与 22.14.0 各一遍） | `npm test` |
+| `scripts/acceptance.mjs` | **18 / 18**，三份公开语料各一遍 | `DISTILLY_PLAYWRIGHT_ROOT=/tmp/pw-root node scripts/run-gates.mjs --requires playwright` |
+| us-house 形状 | `FAIL · units=2744 speakers=18 attributed=175` | 同上，acceptance-us-house |
+| `scripts/audit-objective.mjs --skip-acceptance` | **14 / 14** 条满足 | `node scripts/audit-objective.mjs --skip-acceptance` |
+| `scripts/check_release.mjs` | **7 / 7** 项通过 | `node scripts/check_release.mjs` |
+| `scripts/prompt-lint.mjs` | `prompt-lint: 0 finding(s) in 0 file(s) across 26 file(s) scanned (contract commands: 16)` | `node scripts/prompt-lint.mjs` |
+| `scripts/generate-template.mjs --check` | 无漂移 | `node scripts/generate-template.mjs --check` |
+| `run-gates --without playwright` | **8 / 8** gates passed（Node 20 与 22） | `node scripts/run-gates.mjs --without playwright` |
+| `run-gates --requires playwright` | **3 / 3** gates passed | `DISTILLY_PLAYWRIGHT_ROOT=/tmp/pw-root node scripts/run-gates.mjs --requires playwright` |
+| `check-entry-surface --baseline` | `RESULT PASS  findings 9  known 9  new 0  stale-baseline 0` | `node scripts/check-entry-surface.mjs --baseline tests/gates/baseline/entry-surface.txt` |
+| GitHub Actions | `verify.yml` 两个 job。`.github/workflows/ci.yml` 已删 | `git ls-files .github/workflows` |
 
 验收 18 项里最后 6 项是**交付物与语料门禁**（判据在 `scripts/skill-artifacts.mjs`，纯字符串入参、
 可单测、带反例）：产物齐 / PART A·B·运行规则在 / Layer 0–5 齐且 Layer 0 有规则 /
@@ -84,54 +92,53 @@ node scripts/check_release.mjs && node scripts/prompt-lint.mjs && node scripts/g
 
 产品要的是**一个人的一手产出**：本人著作、演讲与访谈字幕、本人社媒。
 会议记录与多人群聊是**混合流水**，必须先有说话人归属才能切出一个人——解析层现在能做到
-（WebVTT voice / `Name:` 前缀 / 全角冒号 `说话人 1：` / 句中换人），但归属率取决于源本身：
-真实 C-SPAN 字幕 47 分钟里只有 84 处说话人标签，解析层取到 82 条，覆盖率约 6%。
+（WebVTT voice / `Name:` 前缀 / 全角冒号 `说话人 1：` / 句中换人），但归属率取决于源本身。
 
 **结论：选对语料比优化解析器重要一个数量级。** 产品现在会在 Step 1.5 拦住错误形状
-（`distilly doctor --require-shape`），上面这份 C-SPAN 语料的实测判决是
-`FAIL units=2744 speakers=18 attributed=175（3%）`，理由写明"先补这个人自己的一手产出"。
+（`distilly doctor --require-shape`）。本树 C-SPAN 语料的实测判决字面值是
+`FAIL · units=2744 speakers=18 attributed=175`。不要用 85 或 86。本树没有把 PR-1 merge 进来。
+
+合成访谈字幕是 **38** 条 cue。见 `tests/fixtures/public-corpus/README.md`。
 
 ## 6. 分支与 PR 清单
 
+栈停在 `dot-skill-test`，`dot-skill` 保留。程序不改 `dot-skill`。不更新、不 retarget、不合并 #185。
+
+本文件描述的对象是 `dot-skill-test` 上的原子 PR 栈，外加本 PR 以 PR-9 为父提交的工作树。本树**没有**把 PR-1 至 PR-8 merge 进来。A8：不干净且不打回的父 PR 不挡住本条。
+
 | 对象 | 数量 | 状态 |
 | --- | --- | --- |
-| 本地 `ds/NN-*` 分支 | 23 | 每条都有 `docs/evidence/pr-NN-*.md`（审计第 11 行按分支全量检查） |
-| 子功能 PR `#166`–`#184` | 19 | **堆叠**（base 是上一条 `ds/*` 分支）；见下方三组状态 |
-| 集成分支 PR `#185` | 1 | 目标 `dot-skill`；CI 绿 |
-| 集成分支 | `dot-skill-test` | 本文件描述的对象 |
+| 原子 PR 栈 PR-0 至 PR-9 | 10 条已发布 | 见下表。总 verdict 多数不干净，A5 不打回 |
+| 本 PR-10 | 1 | 父提交 `atomic/pr-9-node-installers` @ `bb6d43110933ff106573ab9a5eb07f95f4d38ce4`（#187） |
+| 旧 `ds/NN-*` 快照与 #166 至 #184 | 仍开着 | D4 未执行。证据文档顶部已标明不是本栈 |
+| #185 | 1 | 不碰 |
+| 默认分支 `dot-skill` | 保留 | 程序任何环节都不改它 |
 
-子功能 PR 的三组状态（2026-09-15 首次真正跑 CI 之后）：
+已发布的原子 PR（2026-09-22 程序状态表）：
 
-| 组 | 分支 | CI | 说明 |
+| PR | GitHub | head SHA | 父 |
 | --- | --- | --- | --- |
-| **A. 可评审** | `ds/13` `ds/15` `ds/16` `ds/17` `ds/18` `ds/19` `ds/20` `ds/21`（8 条） | **全绿**（Node 20 / Node 22 / Acceptance） | 已并入集成分支上的 3 个修复提交（Node 20 的 `npm test`、审计推送行、测试读真实 home / 大小写断言） |
-| **B. 一条结构性红** | `ds/12-note`（1 条） | 4 红 2 绿 | 补了同样 3 个修复后仍剩 1 条：该分支的 `check_release` 要求 `docs/v2/IDENTITY.md`，而那是 `ds/15` 才交付的文件 —— 重建快照混了时代 |
-| **C. 快照不自洽** | `ds/01`–`ds/11`（10 条） | 30–79 红 | 分支的树与它自带的测试对不上（例：`ds/01` 只有 20 个测试文件，集成分支有 86 个），**不作为合并入口**；功能已包含在 `dot-skill-test` 与后续分支里 |
+| PR-0 | #186 | `9c8f1ceb464988f4273b2c5fc4bfc4bbe33af3ec` | `dot-skill-test` @ e16cc8a |
+| PR-1 | #188 | `319e8c36633313450ba0b6c2695c55e39b835085` | PR-0 |
+| PR-9 | #187 | `bb6d43110933ff106573ab9a5eb07f95f4d38ce4` | PR-0。**本 PR 的父提交** |
+| PR-4 | #189 | `cd99139b9d2e2770616c58f899b76bdf75be474c` | 未合进本树 |
+| PR-6 | #190 | `bc809f0eba1424625887d700aa395f2f3f595d25` | 未合进本树 |
+| PR-5 | #191 | `009415e163357ce57143ac18ddfd1738c6ee4d5f` | 未合进本树 |
+| PR-2 | #192 | `8784cac5bd15b47ecc1d9511eee637d77d8baf20` | 未合进本树 |
+| PR-3 | #193 | `d05717bbefc2278e1cc55ca74745b359cea9cfdd` | 未合进本树 |
+| PR-8 | #194 | `2b8b22fde9bd41fe9e6ab5d854efd2e91b2da4d8` | 未合进本树 |
+| PR-7 | #195 | `57ffcbff84e26d74696cf94613e6154e9903b4ca` | 未合进本树 |
 
-原始 7 项任务（`ds/01`–`ds/07`）的交付与验证方式见各自的 `docs/evidence/pr-NN-*.md`。
+`docs/evidence/pr-NN-*.md` 描述的是按会话转录重建的 `ds/NN-*` 分支快照，不是本栈。
 
 ## 7. 已知缺口（没做到的部分，按严重度）
 
-1. **效果数字不可用 —— 装置已就绪，只差一个"不是蒸馏者的"裁判**。
-   上一次真实结果（`docs/evidence/pr-10-blind-test-runs.md`）：run 2 evidence 命中率 0.563 /
-   control 0.500，**四臂 0 编造**；只有 10 条 cue / 10 条断言，差异与裁判方差同量级。
-   2026-09-15 已在**右形状语料**（synthetic-interview，76 单元）上重跑机械部分并交付一个盲测包：
-   A/B 按时间码切好（28 / 10 条）、实验组页面已定稿（私有模式校验：A 段 24 条原句 **0 条**
-   出现在页面里，25 个锚点）、对照组裸 prompt 画像已写、裁判题与评分模板齐备。
-   **剩下的两步必须由另一个模型或人来完成**：裁判（写 10 行「特征 | 预测」）与核对者（唯一读 B 的角色）。
-   本机只注册了一个模型（`deepseek-official/deepseek-flash`），同一模型既蒸馏又裁判的数字没有意义。
-   包的位置与确切命令见随包 `README.md`（`/tmp/dst-evidence/blind-2026-09-15/`，本地证据不入库）。
-2. **Step 3（Read）没有机械门禁**，全靠提示词自觉；Step 1 / 1.5 / 2 / 4 / 5 有判据。
-3. **10 个 `ds/*` PR 的树与它们自带的测试不自洽**（`ds/01`–`ds/11`）：CI 30–79 红，
-   是快照本身不完整（例：`ds/01` 只有 20 个测试文件，集成分支有 86 个）。
-   其中 9 条已并入集成分支的修复、8 条 CI 转绿、`ds/12` 剩 1 条结构性失败（见第 6 节的分组表）；
-   剩下这 10 条**不打算修**——它们是重建时的不完整快照，功能已包含在集成分支里。
-4. **19 个 PR 的 base 结构与流程要求不符**：要求是"PR 到 `dot-skill-test`"，实际是堆叠到
-   上一条 `ds/*` 分支（`ds/01` 的 base 甚至是 `pre-v2-baseline`）。CI 触发名单已扩到
-   `ds/**` 并推到各分支，所以现在跑得起来；base 结构未改。
+1. **本树不是叠好的栈顶（A8）**。计划里「60 条全绿、两个基线只剩注释、entry-surface 0 finding」以叠好的栈为前提。本 PR 只删本 PR 真正变绿的基线行。`audit-tests` 基线仍有 20 行。`entry-surface` 基线仍有 9 行（四条 enumerations、四条 channels、一条 unknown-channel 文档缺口）。CONTRACT 第 25 行渠道名单未改。
+2. **仍红的审计行不在本 PR**。留下的包括 R08、R16、R17、R21、R24、R28、R38、R48、R49、R56。它们属于 PR-1 至 PR-8。不要删这些行来凑「只剩注释」。
+3. **Step 3（Read）没有机械门禁**，全靠提示词自觉；Step 1 / 1.5 / 2 / 4 / 5 有判据。
+4. **效果数字需要不是蒸馏者的裁判**。PR-8 的三模型 Lane 7 与 Lane 8 本拍未作为本树的前置。装置在 `scripts/blind-test.mjs`。
 5. **`docs/PRD.md` 与 `docs/SKILL_TYPE_ABSTRACTION_DESIGN*.md` 描述的是 v1（Python）形状**
    （`colleagues/{slug}`、`tools/*.py`），未随 v2 重写；两份文件顶部已加说明指向 v2。
-6. **`docs/evidence/pr-NN-*.md` 是各功能当时的历史证据**：其中 `pr-21` 与 `pr-13` 的结论
-   已被后续工作推翻，两份文件末尾都补了更正章节；其余文件的数字仍然成立。
-7. **`README.md` 已分区**：本分支（Skill + CLI）在前，`distilly-plugin` 那条 Plugin 线
-   明确划到「另一条产品线」标题下并注明不在本分支运行。
+6. **D4 未执行**。#166 至 #184 一条都不关。证据头不写「已关闭」。
+7. **PDF 抽取、HTML axe 与坏链、python3 转发**已从契约挪到 `ROADMAP.md`。`parse-doc` 对 `.pdf` 响亮拒绝，code 为 `office/unsupported-format`。
+8. **四个契约渠道 discord / reddit / notion / gmail 在本树不可达**。那是 PR-4 的 Files。本 PR 不删模块，不改 CONTRACT 第 25 行。

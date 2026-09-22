@@ -137,6 +137,11 @@ function paragraphRecords(paragraphs, kind = "paragraph") {
 /** Dispatch on the file name; anything else is refused by name. */
 export function parseOffice(file, options = {}) {
   const name = file.name.toLowerCase();
+  if (name.endsWith(".pdf")) {
+    const error = new Error(`${file.label}: PDF is not supported; register extracted text with note --from`);
+    error.code = "office/unsupported-format";
+    throw error;
+  }
   if (name.endsWith(".docx")) return parseDocx(file, options);
   if (name.endsWith(".xlsx")) return parseXlsx(file, options);
   throw new Error(`${file.label}: not an OOXML document (.docx/.xlsx)`);

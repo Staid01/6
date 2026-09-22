@@ -1,3 +1,5 @@
+> 描述的是按会话转录重建的 `ds/NN-*` 分支快照，不是本栈。
+
 # PR-06 · `retrospect`：确定性回望派生
 
 - 分支：`ds/06-retrospect`（基于 `dot-skill-test`）

@@ -1,3 +1,5 @@
+> 描述的是按会话转录重建的 `ds/NN-*` 分支快照，不是本栈。
+
 # PR-21 · 发布产物与 CI 测试命令：两个「门禁全绿但东西是坏的」缺陷
 
 - 分支：`ds/21-package-ci`（worktree `/tmp/dot-skill-test-21`，已本地合并进 `dot-skill-test`）

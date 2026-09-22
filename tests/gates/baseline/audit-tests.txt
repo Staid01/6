@@ -5,7 +5,6 @@ R08 `collect reddit --json` is a known channel (CONTRACT §1 line 25), so its fa
 R08 `collect notion --json` is a known channel (CONTRACT §1 line 25), so its failure is about credentials, not about the channel name
 R08 `collect gmail --json` is a known channel (CONTRACT §1 line 25), so its failure is about credentials, not about the channel name
 R08 every collection module under src/collect/ is reachable from bin/distilly.mjs (module present ≠ command wired)
-R23 `parse-doc` advertises pdf alongside docx and xlsx (CONTRACT §1 line 22)
 R08 `collect feishu --mode browser` (SKILL.md 迁移对照表) reaches the browser route and asks for consent
 R08 `collect feishu --mode mcp` (SKILL.md 迁移对照表: feishu_mcp_client.py → collect feishu) reaches the MCP route
 R08 a contract channel that is not shipped is reported as planned (PR \#185 正文: collect/planned-channel), never as an unknown channel

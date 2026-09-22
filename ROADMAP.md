@@ -19,13 +19,25 @@ Anyone can become a reusable `.skill` for AI agents and compatible bots.
 
 <br>
 
-*Last updated: 2026-08-23*
+*Last updated: 2026-09-22*
+
+栈停在 `dot-skill-test`，`dot-skill` 保留。
 
 [**Chinese**](docs/lang/ROADMAP_ZH.md) · [**Spanish**](docs/lang/ROADMAP_ES.md) · [**German**](docs/lang/ROADMAP_DE.md) · [**Japanese**](docs/lang/ROADMAP_JA.md) · [**Russian**](docs/lang/ROADMAP_RU.md) · [**Portuguese**](docs/lang/ROADMAP_PT.md) · [**Korean**](docs/lang/ROADMAP_KO.md)
 
 </div>
 
 ---
+
+## Distilly v2 CLI (this tree)
+
+栈停在 `dot-skill-test`，`dot-skill` 保留。
+
+These CONTRACT clauses are not shipped. They live here instead of the frozen command surface.
+
+- PDF extraction. `parse-doc` refuses `.pdf` with exit 2 and `office/unsupported-format`. Register extracted text with `note --from`.
+- HTML axe (WCAG 2.2 A/AA) and internal broken-link checks on rendered pages.
+- `python3 tools/*.py` forwarding. The CLI does not wrap the old Python tools.
 
 ## What's Done (v1.0)
 

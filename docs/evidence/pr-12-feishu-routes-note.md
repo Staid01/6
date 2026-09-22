@@ -1,3 +1,5 @@
+> 描述的是按会话转录重建的 `ds/NN-*` 分支快照，不是本栈。
+
 # PR-12 · 飞书三路补齐 + `note`：CONTRACT §1 命令面完成
 
 - 分支：`ds/11-feishu-clients`（3 个原子提交）与 `ds/12-note`（1 个），都已本地合并进 `dot-skill-test`
