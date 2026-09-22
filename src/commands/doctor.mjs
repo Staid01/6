@@ -107,6 +107,20 @@ function deliveredAnchors(skillDir) {
   const collect = (text) => {
     for (const match of String(text).matchAll(/\[(k\d{4}(?::t\d+)?)\]/g)) found.add(match[1]);
   };
+  const collectView = (value) => {
+    if (Array.isArray(value)) {
+      for (const item of value) collectView(item);
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value.anchors)) {
+      for (const item of value.anchors) if (typeof item === "string" && item) found.add(item);
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (key === "anchors") continue;
+      collectView(child);
+    }
+  };
   for (const name of ["SKILL.md", "work.md", "persona.md", "work_skill.md", "persona_skill.md"]) {
     const path = join(skillDir, name);
     if (existsSync(path)) collect(readFileSync(path, "utf8"));
@@ -114,7 +128,13 @@ function deliveredAnchors(skillDir) {
   const viewsDir = join(skillDir, "views");
   if (existsSync(viewsDir)) {
     for (const name of readdirSync(viewsDir)) {
-      if (name.endsWith(".view.json")) collect(readFileSync(join(viewsDir, name), "utf8"));
+      if (!name.endsWith(".view.json")) continue;
+      const text = readFileSync(join(viewsDir, name), "utf8");
+      try {
+        collectView(JSON.parse(text));
+      } catch {
+        collect(text);
+      }
     }
   }
   return found;

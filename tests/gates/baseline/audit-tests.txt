@@ -14,7 +14,5 @@ R21 identity.json: a handle claimed twice exits 2 with the exact message and wri
 R21 identity.json with a person that lists no handles is a warning, not a crash
 R28 a document's labels (根因：/ 时间线：) are not counted as participants in a multi-source person
 R24 Step 1.5: `doctor --require-shape` run after Collect and before Derive fails the C-SPAN floor corpus
-R49 doctor fails when views/<slug>.view.json cites an anchor the ledger does not declare
 R48 doctor reports the channels this machine cannot collect from and the computer-use share
 R58 manifest.json must not point the host at Python installers that are not in the tree
-R38 SKILL.md Step 5.1: `view check` rejects an anchor that does not exist in knowledge/index.json

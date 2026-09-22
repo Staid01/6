@@ -528,3 +528,75 @@ test("cli: view needs a slug or --file", () => {
   assert.equal(help.status, 0);
   assert.match(help.stdout, /## English/);
 });
+
+const LEDGER_IDS = ["k0012", "k0014", "k0021", "k0033", "k0040:t2", "k0044", "k0051", "k0063"];
+
+function writePersonWithLedger(root, { orphan = false } = {}) {
+  const skillDir = join(root, "skills", "colleague", "zhang-san");
+  mkdirSync(join(skillDir, "knowledge"), { recursive: true });
+  writeFileSync(
+    join(skillDir, "knowledge", "index.json"),
+    `${JSON.stringify([{ id: "k0001", kind: "subtitle", bytes: 10, sha256: "a".repeat(64), anchors: LEDGER_IDS }], null, 2)}\n`,
+    "utf8",
+  );
+  const view = validView();
+  if (orphan) {
+    view.sections[0].items[0].anchors = ["k9999"];
+    view.evidence.push(evidenceEntry("k9999", "subtitle", "message", { quote: "不存在的锚点原文", note: "不存在的锚点" }));
+  }
+  writeFixture(root, view);
+  return {
+    skillDir,
+    htmlPath: join(skillDir, "views", "zhang-san.html"),
+    receiptPath: join(skillDir, "evidence", "renders", "receipt.json"),
+  };
+}
+
+test("a cited id missing from the ledger is view/orphan-anchor", () => {
+  const report = check(
+    (view) => {
+      view.sections[0].items[0].anchors = ["k9999"];
+      view.evidence.push(evidenceEntry("k9999", "feishu", "message", { quote: "不存在的锚点原文" }));
+    },
+    { ledgerAnchors: new Set(LEDGER_IDS) },
+  );
+  assert.equal(report.ok, false);
+  assert.equal(report.diagnostics[0].code, "view/orphan-anchor");
+  assert.equal(report.diagnostics[0].severity, "error");
+  assert.equal(report.diagnostics[0].subject.identity, "k9999");
+  assert.deepEqual(Object.keys(report.diagnostics[0]).sort(), ["code", "evidence", "message", "severity", "subject", "supportedFixes"]);
+});
+
+test("cli: view check --json exits 1 with view/orphan-anchor when the ledger lacks the cited id", () => {
+  const root = tempRoot();
+  writePersonWithLedger(root, { orphan: true });
+  const run = runCli(["view", "check", "--person", "zhang-san", "--base-dir", root, "--json"]);
+  assert.equal(run.status, 1, run.stderr);
+  const receipt = JSON.parse(run.stdout);
+  assert.equal(receipt.ok, false);
+  assert.equal(receipt.diagnostics[0].code, "view/orphan-anchor");
+  assert.equal(receipt.diagnostics[0].severity, "error");
+  assert.equal(receipt.diagnostics[0].subject.identity, "k9999");
+});
+
+test("cli: view render exits 1 and writes no html when a cited anchor is absent from the ledger", () => {
+  const root = tempRoot();
+  const { htmlPath, receiptPath } = writePersonWithLedger(root, { orphan: true });
+  const run = runCli(["view", "render", "--person", "zhang-san", "--base-dir", root, "--json"]);
+  assert.equal(run.status, 1, run.stderr);
+  assert.equal(existsSync(htmlPath), false);
+  assert.equal(existsSync(receiptPath), false);
+});
+
+test("cli: view check --file without a ledger warns VIEW_LEDGER_ABSENT and still exits 0", () => {
+  const root = tempRoot();
+  const viewPath = writeFixture(root, validView());
+  const run = runCli(["view", "check", "--file", viewPath, "--json"]);
+  assert.equal(run.status, 0, run.stderr);
+  const receipt = JSON.parse(run.stdout);
+  assert.equal(receipt.ok, true);
+  const warned =
+    receipt.warnings.some((row) => String(row).includes("VIEW_LEDGER_ABSENT")) ||
+    receipt.diagnostics.some((row) => row.code === "VIEW_LEDGER_ABSENT");
+  assert.equal(warned, true, JSON.stringify({ warnings: receipt.warnings, codes: receipt.diagnostics.map((row) => row.code) }));
+});
